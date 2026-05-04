@@ -513,8 +513,7 @@ class CommandHandlers:
         action = "已开启" if target == "plan" else "已关闭"
         if ok:
             label = formatters.session_label_short(sid, self.sessions_cache)
-            status_line = f"此窗口 Plan 模式{action}"
-            yield event.plain_result(f"{status_line}\n{label}")
+            yield event.plain_result(f"{label}\n此窗口 Plan 模式{action}")
         else:
             yield event.plain_result(msg)
 
