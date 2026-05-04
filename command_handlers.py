@@ -472,7 +472,7 @@ class CommandHandlers:
 
     # ── plan ──
 
-    async def cmd_plan(self, event: AstrMessageEvent):
+    async def cmd_plan(self, event: AstrMessageEvent, arg: str = ""):
         """切换 Plan 模式（toggle）: Claude 切换 permissionMode，Codex 切换 collaborationMode"""
         await self.state_mgr.set_user_state(event)
         sid = self.state_mgr.effective_sid(event)
