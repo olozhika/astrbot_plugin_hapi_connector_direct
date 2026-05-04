@@ -511,7 +511,11 @@ class CommandHandlers:
                         break
 
         action = "已开启" if target == "plan" else "已关闭"
-        yield event.plain_result(f"Plan 模式{action}" if ok else msg)
+        if ok:
+            label = formatters.session_label_short(sid, self.sessions_cache)
+            yield event.plain_result(f"Plan 模式{action}\n{label}")
+        else:
+            yield event.plain_result(msg)
 
     # ── remote ──
 
