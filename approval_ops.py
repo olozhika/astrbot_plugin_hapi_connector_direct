@@ -67,7 +67,7 @@ def build_question_prompt(q_items: list, qi_idx: int, qi: int,
         desc = f" — {opt['description']}" if opt.get("description") else ""
         lines.append(f"  [{i}] {opt['label']}{desc}")
     if is_rui:
-        lines.append("（选择序号后可附加备注）")
+        pass
     else:
         lines.append(f"  [{len(opts) + 1}] 其他（自定义输入）")
     return "\n".join(lines)

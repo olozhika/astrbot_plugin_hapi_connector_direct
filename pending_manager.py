@@ -95,19 +95,22 @@ class PendingManager:
                 continue
 
             is_rui = req.get("tool") == "request_user_input"
-            answers: dict = {}
 
-            for qi, question in enumerate(question_list):
+            # 收集每题的回答，支持重做
+            collected_answers: list[list[str]] = [[] for _ in question_list]
+
+            async def collect_one(qi: int) -> bool:
+                """收集第 qi 题的回答，返回是否成功"""
+                question = question_list[qi]
                 opts = question.get("options", [])
                 prompt = approval_ops.build_question_prompt(
                     questions, qi_idx, qi, question, self.sse_listener.sessions_cache, is_rui=is_rui
                 )
                 await event.send(event.plain_result(prompt))
 
-                collected: list[str] = []
+                collected = []
 
                 if is_rui:
-                    # request_user_input：先选选项，再可选附加备注
                     @session_waiter(timeout=120, record_history_chains=False)
                     async def q_waiter(controller: SessionController, ev: AstrMessageEvent,
                                        _opts=opts, _collected=collected):
@@ -125,10 +128,9 @@ class PendingManager:
                         await q_waiter(event)
                     except TimeoutError:
                         await event.send(event.plain_result("操作超时，已取消"))
-                        return
+                        return False
 
-                    # 询问备注
-                    await event.send(event.plain_result("请输入备注（输入 n 跳过）:"))
+                    await event.send(event.plain_result("请描述此问题的补充信息或要求，若无请输入 n:"))
 
                     @session_waiter(timeout=60, record_history_chains=False)
                     async def note_waiter(controller: SessionController, ev: AstrMessageEvent,
@@ -141,10 +143,9 @@ class PendingManager:
                     try:
                         await note_waiter(event)
                     except TimeoutError:
-                        pass  # 备注超时直接跳过
+                        pass
 
                 else:
-                    # AskUserQuestion：支持"其他"自定义输入
                     @session_waiter(timeout=120, record_history_chains=False)
                     async def q_waiter(controller: SessionController, ev: AstrMessageEvent,
                                        _opts=opts, _collected=collected, _state={"other": False}):
@@ -170,15 +171,58 @@ class PendingManager:
                         await q_waiter(event)
                     except TimeoutError:
                         await event.send(event.plain_result("操作超时，已取消"))
+                        return False
+
+                collected_answers[qi] = collected
+                return True
+
+            # 逐题收集
+            for qi in range(len(question_list)):
+                if not await collect_one(qi):
+                    return
+
+            # 审阅循环
+            while True:
+                lines = ["📋 回答汇总，输入序号修改某题，y 提交，n 取消:"]
+                for qi, question in enumerate(question_list):
+                    q_text = question.get("question", "") or question.get("id", f"问题{qi+1}")
+                    ans = collected_answers[qi]
+                    ans_display = "、".join(ans) if ans else "(未回答)"
+                    lines.append(f"  [{qi+1}] {q_text[:40]}\n      → {ans_display}")
+                await event.send(event.plain_result("\n".join(lines)))
+
+                reply_box = {"v": ""}
+
+                @session_waiter(timeout=120, record_history_chains=False)
+                async def review_waiter(controller: SessionController, ev: AstrMessageEvent,
+                                        _box=reply_box):
+                    _box["v"] = (ev.message_str or "").strip()
+                    controller.stop()
+
+                try:
+                    await review_waiter(event)
+                except TimeoutError:
+                    await event.send(event.plain_result("操作超时，已取消"))
+                    return
+
+                reply = reply_box["v"]
+                if reply.lower() == "y":
+                    break
+                elif reply.lower() == "n":
+                    await event.send(event.plain_result("已取消"))
+                    return
+                elif reply.isdigit() and 1 <= int(reply) <= len(question_list):
+                    if not await collect_one(int(reply) - 1):
                         return
 
-                # request_user_input 用嵌套格式 { id: { answers: [...] } }
-                # AskUserQuestion 用扁平格式 { "0": [...] }
+            # 构造 answers
+            answers: dict = {}
+            for qi, question in enumerate(question_list):
                 key = question.get("id", str(qi)) if is_rui else str(qi)
                 if is_rui:
-                    answers[key] = {"answers": collected}
+                    answers[key] = {"answers": collected_answers[qi]}
                 else:
-                    answers[key] = collected
+                    answers[key] = collected_answers[qi]
 
             success, msg = await approval_ops.answer_question(client, sid, rid, answers)
             if success:
