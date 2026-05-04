@@ -224,7 +224,9 @@ def session_label_short(sid: str, sessions_cache: list[dict]) -> str:
     if len(path) > 40:
         path = "..." + path[-37:]
 
-    return f"💬 {title}\n📂 {path}\n🤖 {flavor} | 🏷️ {sid[:8]}"
+    in_plan = session.get("permissionMode") == "plan" or (flavor == "codex" and session.get("collaborationMode") == "plan")
+    plan_tag = " | 📋Plan Mode" if in_plan else ""
+    return f"💬 {title}\n📂 {path}\n🤖 {flavor}{plan_tag} | 🏷️ {sid[:8]}"
 
 
 def group_sessions_by_path(sessions: list[dict]) -> dict[str, list[dict]]:
@@ -272,13 +274,7 @@ def format_bind_status(sessions: list[dict], session_owners: dict[str, str], win
         lines.append(f"[{idx} | 🏷️{sid_short}] {summary}")
 
         parts = [status, f"🤖{flavor}:{model}"]
-        if s.get("permissionMode") == "plan" or (flavor == "codex" and s.get("collaborationMode") == "plan"):
-            parts.append("📋Planning")
         if pending:
-            parts.append(f"⚠️ {pending}待审批")
-
-        # 添加绑定信息
-        owner = session_owners.get(sid)
         if owner:
             owner_display = owner[:20] + "..." if len(owner) > 20 else owner
             parts.append(f"📌{owner_display}")
@@ -360,8 +356,6 @@ def format_session_list(
 
         # 第二行：状态 | 模型 | 待审批 | 当前
         parts = [status, f"🤖{flavor}:{model}"]
-        if s.get("permissionMode") == "plan" or (flavor == "codex" and s.get("collaborationMode") == "plan"):
-            parts.append("📋Planning")
         if pending:
             parts.append(f"⚠️ {pending}待审批")
         if current_sid and sid == current_sid:
