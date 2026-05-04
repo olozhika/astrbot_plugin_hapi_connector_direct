@@ -183,12 +183,14 @@ class PendingManager:
 
             # 审阅循环
             while True:
-                lines = ["📋 回答汇总，输入序号修改某题，y 提交，n 取消:"]
+                lines = ["📋 回答汇总:"]
                 for qi, question in enumerate(question_list):
                     q_text = question.get("question", "") or question.get("id", f"问题{qi+1}")
                     ans = collected_answers[qi]
                     ans_display = "、".join(ans) if ans else "(未回答)"
-                    lines.append(f"  [{qi+1}] {q_text[:40]}\n      → {ans_display}")
+                    lines.append(f"[{qi+1}] {q_text[:40]}")
+                    lines.append(f"  → {ans_display}")
+                lines.append("\n输入序号修改某题，y 提交，n 取消")
                 await event.send(event.plain_result("\n".join(lines)))
 
                 reply_box = {"v": ""}
