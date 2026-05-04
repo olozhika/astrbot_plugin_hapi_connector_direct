@@ -1,5 +1,12 @@
 # 更新日志
 
+## v2.1.1 — Bug 修复
+
+1. 修复 `/hapi plan` 路由传参报错
+2. 修复 plan 模式切换后 cache 未同步导致推送通知无 `📋Plan Mode` 标记
+3. 支持 Codex `request_user_input` 交互式问答（选项 + 可选备注）
+4. `/hapi msg` 格式化显示 `request_user_input` 问题列表
+
 ## v2.1.0 — 同步 HAPI 特性，新增 Plan 模式
 
 1. **新增 `/hapi plan` 指令**：切换 Plan 模式（toggle）（对于codex，需 HAPI版本 >= 0.16.3）
