@@ -1,5 +1,7 @@
 """Session 操作函数：异步封装多步 API 调用"""
 
+import json
+
 from .hapi_client import AsyncHapiClient
 
 
@@ -202,7 +204,33 @@ async def resume_session(client: AsyncHapiClient, sid: str) -> tuple[bool, str, 
     else:
         body = await resp.text()
         resp.release()
-        return False, f"恢复失败: {resp.status} {body[:200]}", None
+        return False, _format_resume_error(resp.status, body), None
+
+
+def _format_resume_error(status: int, body: str) -> str:
+    """Format HAPI resume errors with context for known upstream failure modes."""
+    code = ""
+    error = ""
+    try:
+        data = json.loads(body)
+        if isinstance(data, dict):
+            code = str(data.get("code") or "")
+            error = str(data.get("error") or "")
+    except json.JSONDecodeError:
+        pass
+
+    if code == "resume_unavailable" and error == "Resume session ID unavailable":
+        return (
+            "恢复失败：HAPI 找到了这个会话，但会话 metadata 里没有原生恢复 ID "
+            "（例如 claudeSessionId / codexSessionId）。\n"
+            "这通常表示原生会话 ID 没来得及写入 HAPI，或写入前 CLI/runner 已断开；"
+            "HAPI 前端此时一般也无法无损恢复。\n"
+            "若想继续这段工作，你需要在原机器上找到 Claude/Codex/Gemini/OpenCode 所对应的原生 session id，"
+            "用对应原生 CLI 恢复；找不到的话只能在同目录新建会话，并手动补充摘要或关键上下文。"
+        )
+
+    detail = error or body[:200]
+    return f"恢复失败: {status} {detail}"
 
 
 async def rename_session(client: AsyncHapiClient, sid: str, new_name: str) -> tuple[bool, str]:
