@@ -285,11 +285,19 @@ class CommandHandlers:
         target_sid = target["id"]
         target_flavor = target.get("metadata", {}).get("flavor", "claude")
 
+        ok_ready, ready_sid, ready_msg = await self.plugin.ensure_session_for_send(event, target_sid)
+        if not ok_ready:
+            yield event.plain_result(f"发送前恢复 session 失败: {ready_msg}")
+            return
+        if ready_sid != target_sid:
+            target_sid = ready_sid
+            target_flavor = self.state_mgr.effective_flavor(event) or target_flavor
+
         # 提醒用户当前窗口的 session
         current_sid = self.state_mgr.current_sid(event)
-        reminder = ""
+        reminder = ready_msg
         if current_sid and current_sid != target_sid:
-            reminder = f"→ 发送到 [{target_flavor}] {target_sid[:8]} (当前窗口: {current_sid[:8]})\n"
+            reminder += f"→ 发送到 [{target_flavor}] {target_sid[:8]} (当前窗口: {current_sid[:8]})\n"
 
         ok, msg = await session_ops.send_message(self.client, target_sid, text)
         await self.state_mgr.set_user_state(event)
@@ -1021,14 +1029,14 @@ class CommandHandlers:
                 yield event.plain_result(f"Session [{sid[:8]}] 当前状态为 {state}，只能恢复 inactive 状态的 session")
                 return
 
-        ok, msg, resumed_sid = await session_ops.resume_session(self.client, sid)
-        if ok and resumed_sid:
-            await self.plugin._refresh_sessions()
+        ok, resumed_sid, msg = await self.plugin.ensure_session_for_send(event, sid)
+        if ok:
             resumed = next((s for s in self.sessions_cache if s.get("id") == resumed_sid), None)
             flavor = (resumed or {}).get("metadata", {}).get("flavor") or self.state_mgr.effective_flavor(event) or "claude"
-            await self.state_mgr.capture_window(resumed_sid, event.unified_msg_origin, flavor)
             if resumed_sid != sid:
-                msg += f"\n已自动切换到恢复后的 session [{flavor}] {resumed_sid[:8]}..."
+                msg += f"已自动切换到可用 session [{flavor}] {resumed_sid[:8]}..."
+            elif not msg:
+                msg = f"Session [{sid[:8]}] 已可用"
         yield event.plain_result(msg)
 
     # ── rename ──

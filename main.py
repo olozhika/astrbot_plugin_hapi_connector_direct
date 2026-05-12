@@ -327,6 +327,64 @@ class HapiConnectorPlugin(Star):
             return None
         return self._missing_machine_hint_text()
 
+    async def ensure_session_for_send(self, event: AstrMessageEvent, sid: str) -> tuple[bool, str, str]:
+        """Return an active session id for sending, resuming or respawning if needed."""
+        await self._refresh_sessions()
+        session = next((s for s in self.sessions_cache if s.get("id") == sid), None)
+        if not session:
+            return False, sid, f"未找到 session [{sid[:8]}]"
+        if session.get("active"):
+            return True, sid, ""
+
+        ok, msg, resumed_sid = await session_ops.resume_session(self.client, sid)
+        if ok and resumed_sid:
+            await self._refresh_sessions()
+            resumed = next((s for s in self.sessions_cache if s.get("id") == resumed_sid), None)
+            flavor = (resumed or session).get("metadata", {}).get("flavor") or self.state_mgr.effective_flavor(event) or "claude"
+            await self.state_mgr.capture_window(resumed_sid, event.unified_msg_origin, flavor)
+            note = f"已恢复 inactive session -> [{resumed_sid[:8]}]\n"
+            return True, resumed_sid, note
+
+        if "resume_unavailable" not in msg and "Resume session ID unavailable" not in msg:
+            return False, sid, msg
+
+        metadata = session.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        path = metadata.get("path")
+        if not path:
+            return False, sid, f"{msg}\n无法重建：session metadata 缺少 path"
+
+        flavor = metadata.get("flavor") or self.state_mgr.effective_flavor(event) or "claude"
+        machines = await session_ops.fetch_machines(self.client)
+        target_machine = None
+        machine_id = metadata.get("machineId")
+        host = metadata.get("host")
+        if machine_id:
+            target_machine = next((m for m in machines if m.get("id") == machine_id), None)
+        if target_machine is None and host:
+            target_machine = next((m for m in machines if (m.get("metadata") or {}).get("host") == host), None)
+        if target_machine is None and len(machines) == 1:
+            target_machine = machines[0]
+        if target_machine is None:
+            return False, sid, f"{msg}\n无法重建：未找到匹配的在线 machine"
+
+        ok, spawn_msg, new_sid = await session_ops.spawn_session(
+            self.client,
+            target_machine.get("id"),
+            path,
+            flavor,
+        )
+        if not ok or not new_sid:
+            return False, sid, f"{msg}\n尝试新建 session 也失败: {spawn_msg}"
+
+        await self._refresh_sessions()
+        await self.state_mgr.capture_window(new_sid, event.unified_msg_origin, flavor)
+        note = (
+            f"原 session 无法按原生 session id 恢复，已按前端逻辑重新创建 [{flavor}] session -> [{new_sid[:8]}]\n"
+        )
+        return True, new_sid, note
+
     def _format_no_visible_sessions_text(self, event: AstrMessageEvent) -> str:
         lines = [
             "当前窗口没有接收任何 session 通知。",
@@ -520,6 +578,17 @@ class HapiConnectorPlugin(Star):
             event.stop_event()
             return
 
+        reminder = ""
+        ok_ready, ready_sid, ready_msg = await self.ensure_session_for_send(event, target_sid)
+        if not ok_ready:
+            yield event.plain_result(f"发送前恢复 session 失败: {ready_msg}")
+            event.stop_event()
+            return
+        if ready_sid != target_sid:
+            target_sid = ready_sid
+            target_flavor = self.state_mgr.effective_flavor(event) or target_flavor
+            reminder += ready_msg
+
         # 提取文件并上传
         files = file_ops.extract_files_from_message(event)
         attachments = []
@@ -537,12 +606,10 @@ class HapiConnectorPlugin(Star):
 
         # 发送消息（带附件）
         current_sid = self.state_mgr.current_sid(event)
-        reminder = ""
         if current_sid and current_sid != target_sid:
-            reminder = f"→ 发送到 [{target_flavor}] {target_sid[:8]} (当前窗口: {current_sid[:8]})\n"
+            reminder += f"→ 发送到 [{target_flavor}] {target_sid[:8]} (当前窗口: {current_sid[:8]})\n"
 
         ok, msg = await session_ops.send_message(self.client, target_sid, text, attachments)
         await self.state_mgr.set_user_state(event)
         yield event.plain_result(reminder + msg)
         event.stop_event()
-

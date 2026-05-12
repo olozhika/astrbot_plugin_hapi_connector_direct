@@ -319,8 +319,15 @@ quick_prefix (快捷前缀): {quick_prefix}
                 yield "操作已被用户拒绝，请停止工具调用，先交流清楚问题"
             return
 
+        ok_ready, ready_sid, ready_msg = await self.plugin.ensure_session_for_send(event, sid)
+        if not ok_ready:
+            yield f"发送前恢复 session 失败: {ready_msg}"
+            return
+
         # 执行发送
-        ok, result = await session_ops.send_message(self.client, sid, message)
+        ok, result = await session_ops.send_message(self.client, ready_sid, message)
+        if ready_msg:
+            result = ready_msg + result
         yield result if ok else f"发送失败: {result}"
 
     async def tool_switch_session(self, event: AstrMessageEvent, target: str):
@@ -554,4 +561,3 @@ quick_prefix (快捷前缀): {quick_prefix}
             yield "\n\n".join(results)
         else:
             yield "命令执行完成"
-
