@@ -8,6 +8,24 @@ from . import session_ops
 from .formatters import is_compact_request
 
 
+def _session_resume_state(session: dict) -> str:
+    """Return the lifecycle state used by /hapi resume pre-checks."""
+    explicit_state = session.get("state")
+    if isinstance(explicit_state, str) and explicit_state:
+        return explicit_state
+
+    metadata = session.get("metadata") or {}
+    if isinstance(metadata, dict):
+        lifecycle_state = metadata.get("lifecycleState")
+        if isinstance(lifecycle_state, str) and lifecycle_state:
+            return lifecycle_state
+
+    if "active" in session:
+        return "active" if session.get("active") else "inactive"
+
+    return "unknown"
+
+
 class CommandHandlers:
     """处理所有 /hapi 子命令"""
 
@@ -998,7 +1016,7 @@ class CommandHandlers:
         # 状态预检查
         target_session = next((s for s in self.sessions_cache if s.get("id") == sid), None)
         if target_session:
-            state = target_session.get("state", "unknown")
+            state = _session_resume_state(target_session)
             if state != "inactive":
                 yield event.plain_result(f"Session [{sid[:8]}] 当前状态为 {state}，只能恢复 inactive 状态的 session")
                 return
