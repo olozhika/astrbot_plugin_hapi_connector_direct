@@ -229,7 +229,7 @@ def session_label_short(sid: str, sessions_cache: list[dict]) -> str:
 
     meta = session.get("metadata", {})
     flavor = meta.get("flavor", "?")
-    summary = (meta.get("summary") or {}).get("text", "")
+    summary = get_session_title(session)
     path = meta.get("path", "")
 
     title = summary or "(无标题)"
@@ -271,7 +271,7 @@ def format_bind_status(sessions: list[dict], session_owners: dict[str, str], win
 
         sid = s.get("id", "?")
         sid_short = sid[:8]
-        summary = (meta.get("summary") or {}).get("text", "") or "(无标题)"
+        summary = get_session_title(s)
         flavor = meta.get("flavor", "?")
         model = s.get("modelMode", "default")
         pending = s.get("pendingRequestsCount", 0)
@@ -345,14 +345,7 @@ def format_session_list(
         sid = s.get("id", "?")
         sid_short = sid[:8]
         display_idx = index_by_sid.get(sid, local_idx)
-        summary_data = meta.get("summary") or {}
-        if isinstance(summary_data, dict):
-            summary_text = summary_data.get("text", "")
-        else:
-            summary_text = summary_data
-        if summary_text is None:
-            summary_text = ""
-        summary = str(summary_text) or "(无标题)"
+        summary = get_session_title(s)
         flavor = meta.get("flavor", "?")
         model = s.get("modelMode", "default")
         pending = s.get("pendingRequestsCount", 0)
@@ -380,6 +373,41 @@ def format_session_list(
     return "\n".join(lines)
 
 
+def get_session_title(session: dict) -> str:
+    """
+    获取 Session 标题（兼容新版 Codex / HAPI / 旧版）
+    """
+
+    meta = session.get("metadata") or {}
+
+    # summary 兼容 dict / string
+    summary = meta.get("summary")
+    if isinstance(summary, dict):
+        summary = summary.get("text")
+    elif summary is not None:
+        summary = str(summary)
+
+    candidates = (
+        session.get("thread_name"),      # 新版 Codex
+        meta.get("thread_name"),
+
+        meta.get("name"),                # HAPI rename
+        session.get("name"),
+
+        session.get("title"),
+
+        summary,                         # 旧版 Codex
+
+        meta.get("path"),                # 最后兜底
+    )
+
+    for value in candidates:
+        if value:
+            return str(value)
+
+    return "(无标题)"
+
+
 def format_session_status(s: dict) -> str:
     """格式化单个 session 状态"""
     meta = s.get("metadata", {})
@@ -391,7 +419,7 @@ def format_session_status(s: dict) -> str:
     perm = s.get("permissionMode", "default")
     model = s.get("modelMode", "default")
     collab = s.get("collaborationMode", "default")
-    summary = (meta.get("summary") or {}).get("text", "(无标题)")
+    summary = get_session_title(s)
 
     lines = [
         f"Session:  {sid[:8]}...",
