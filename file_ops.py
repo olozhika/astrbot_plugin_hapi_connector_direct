@@ -224,7 +224,11 @@ async def _read_upload_source(source: dict[str, Any]) -> tuple[bytes, str, str]:
     if kind == "path":
         path = source["path"]
         filename = source.get("name") or os.path.basename(path)
-        mime_type = source.get("mimeType") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        mime_type = (
+            source.get("mimeType")
+            or mimetypes.guess_type(filename)[0]
+            or "application/octet-stream"
+        )
         with open(path, "rb") as f:
             raw = f.read()
         return raw, filename, mime_type
@@ -235,10 +239,17 @@ async def _read_upload_source(source: dict[str, Any]) -> tuple[bytes, str, str]:
         async with session.get(url) as resp:
             resp.raise_for_status()
             raw = await resp.read()
-            header_mime = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip()
+            header_mime = (
+                (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip()
+            )
 
     filename = source.get("name") or _filename_from_url(url)
-    mime_type = source.get("mimeType") or header_mime or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    mime_type = (
+        source.get("mimeType")
+        or header_mime
+        or mimetypes.guess_type(filename)[0]
+        or "application/octet-stream"
+    )
     filename = _finalize_filename(filename, mime_type, component_type)
     return raw, filename, mime_type
 
@@ -277,7 +288,9 @@ async def get_file_size(client: AsyncHapiClient, sid: str, path: str) -> int:
     return 0
 
 
-async def download_to_tmp(client: AsyncHapiClient, sid: str, path: str) -> tuple[str, str, bool]:
+async def download_to_tmp(
+    client: AsyncHapiClient, sid: str, path: str
+) -> tuple[str, str, bool]:
     """Download a remote file into a local temporary file."""
     ok, content = await session_ops.read_file(client, sid, path)
     if not ok:
@@ -294,7 +307,9 @@ async def download_to_tmp(client: AsyncHapiClient, sid: str, path: str) -> tuple
     return tmp.name, filename, is_image
 
 
-async def upload_file(client: AsyncHapiClient, sid: str, source: Any) -> tuple[bool, str, dict | None]:
+async def upload_file(
+    client: AsyncHapiClient, sid: str, source: Any
+) -> tuple[bool, str, dict | None]:
     """Upload a local path or remote URL attachment to HAPI."""
     normalized = _normalize_upload_source(source)
     if not normalized:
@@ -340,7 +355,9 @@ async def upload_file(client: AsyncHapiClient, sid: str, source: Any) -> tuple[b
         resp.release()
 
 
-async def delete_uploaded_file(client: AsyncHapiClient, sid: str, path: str) -> tuple[bool, str]:
+async def delete_uploaded_file(
+    client: AsyncHapiClient, sid: str, path: str
+) -> tuple[bool, str]:
     """Delete a previously uploaded HAPI blob."""
     resp = await client.post(f"/api/sessions/{sid}/upload/delete", json={"path": path})
     try:
