@@ -1,5 +1,9 @@
 # 更新日志
 
+## New
+
+新增直通模式（bypass mode）：`/hapi bypass [on|off]` 开启后，当前 session 用户发送的所有消息（不含 `/hapi` 命令）直接转发给 HAPI 连接的 agent，完全跳过 AstrBot LLM，实现纯透传中继。
+
 ## v2.1.4
 
 修复 `/hapi create` 向导在 Windows 上输入盘符路径（如 `C:\Users\...`）时被错误添加前缀 `/` 的问题
