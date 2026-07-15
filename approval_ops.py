@@ -1,9 +1,8 @@
 """审批业务逻辑：扁平化待审批、批量审批、问题提示构建"""
 
-from .hapi_client import AsyncHapiClient
-from . import session_ops
-from . import formatters
+from . import formatters, session_ops
 from .formatters import is_compact_request
+from .hapi_client import AsyncHapiClient
 
 
 def flatten_pending(pending_dict: dict) -> list[tuple[str, str, dict]]:
@@ -23,12 +22,14 @@ def remove_pending_entry(pending_dict: dict, sid: str, rid: str):
             del pending_dict[sid]
 
 
-async def approve_all(client: AsyncHapiClient,
-                      pending_dict: dict) -> str | None:
+async def approve_all(client: AsyncHapiClient, pending_dict: dict) -> str | None:
     """批准所有非 question 待审批请求，返回结果文本。无待审批时返回 None。"""
     items = flatten_pending(pending_dict)
-    regular = [(sid, rid, req) for sid, rid, req in items
-               if not formatters.is_question_request(req)]
+    regular = [
+        (sid, rid, req)
+        for sid, rid, req in items
+        if not formatters.is_question_request(req)
+    ]
     if not regular:
         return None
 
@@ -46,8 +47,14 @@ async def approve_all(client: AsyncHapiClient,
     return f"已全部批准 ({len(regular)} 个):\n" + "\n".join(results)
 
 
-def build_question_prompt(q_items: list, qi_idx: int, qi: int,
-                          q: dict, sessions_cache: list, is_rui: bool = False) -> str:
+def build_question_prompt(
+    q_items: list,
+    qi_idx: int,
+    qi: int,
+    q: dict,
+    sessions_cache: list,
+    is_rui: bool = False,
+) -> str:
     """构建单个问题的提示文本"""
     sid = q_items[qi_idx][0]
     opts = q.get("options", [])
@@ -73,8 +80,9 @@ def build_question_prompt(q_items: list, qi_idx: int, qi: int,
     return "\n".join(lines)
 
 
-async def batch_approve(client: AsyncHapiClient,
-                        items: list[tuple[str, str, dict]]) -> list[tuple[str, str, bool]]:
+async def batch_approve(
+    client: AsyncHapiClient, items: list[tuple[str, str, dict]]
+) -> list[tuple[str, str, bool]]:
     """批量批准权限请求，返回 [(sid, rid, success), ...]"""
     results = []
     for sid, rid, req in items:
@@ -89,7 +97,8 @@ async def batch_approve(client: AsyncHapiClient,
     return results
 
 
-async def answer_question(client: AsyncHapiClient, sid: str, rid: str,
-                          answers: dict) -> tuple[bool, str]:
+async def answer_question(
+    client: AsyncHapiClient, sid: str, rid: str, answers: dict
+) -> tuple[bool, str]:
     """回答 question 类型的权限请求"""
     return await session_ops.answer_permission_question(client, sid, rid, answers)
