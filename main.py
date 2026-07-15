@@ -3,23 +3,21 @@
 所有指令仅管理员可用
 """
 
-from astrbot.api.event import filter, AstrMessageEvent, MessageChain
-from astrbot.api.star import Context, Star, register
-from astrbot.api import AstrBotConfig, logger
-from astrbot.api.message_components import Poke
 import astrbot.api.message_components as Comp
+from astrbot.api import AstrBotConfig, logger
+from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.message_components import Poke
+from astrbot.api.star import Context, Star, register
 
-from .hapi_client import AsyncHapiClient
-from .cf_access import CfAccessManager
-from .sse_listener import SSEListener
+from . import file_ops, formatters, session_ops
 from .binding_manager import BindingManager
-from .state_manager import StateManager
+from .cf_access import CfAccessManager
+from .command_handlers import CommandHandlers
+from .hapi_client import AsyncHapiClient
 from .notification_manager import NotificationManager
 from .pending_manager import PendingManager
-from .command_handlers import CommandHandlers
-from . import session_ops
-from . import formatters
-
+from .sse_listener import SSEListener
+from .state_manager import StateManager
 
 # ── AstrBot v4.18.3 pydantic v1 的 __setattr__ 会拦截 File 的 property setter，
 # ── 导致设置 file 属性时写入错误字段,文件传输会直接报错。此处的补丁在 bug 存在时自动生效，官方修复后自动跳过。
@@ -28,19 +26,23 @@ try:
     _test_file.file = "test"
 except Exception:
     _original_file_setattr = Comp.File.__setattr__
+
     def _patched_file_setattr(self, name, value):
         if name == "file":
             _original_file_setattr(self, "file_", value)
         else:
             _original_file_setattr(self, name, value)
+
     Comp.File.__setattr__ = _patched_file_setattr
 
 
-@register("astrbot_plugin_hapi_connector", "LiJinHao999",
-          "连接 HAPI，随时随地用 Claude Code / Codex / Gemini / OpenCode vibe coding",
-          "2.1.4")
+@register(
+    "astrbot_plugin_hapi_connector",
+    "LiJinHao999",
+    "连接 HAPI，随时随地用 Claude Code / Codex / Gemini / OpenCode vibe coding",
+    "2.1.4",
+)
 class HapiConnectorPlugin(Star):
-
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
@@ -88,7 +90,9 @@ class HapiConnectorPlugin(Star):
         self.sse_listener = SSEListener(
             self.client,
             self.sessions_cache,
-            lambda text, sid: self.notification_mgr.push_notification(text, sid, self.sessions_cache)
+            lambda text, sid: self.notification_mgr.push_notification(
+                text, sid, self.sessions_cache
+            ),
         )
 
         # 待审批管理器
@@ -111,6 +115,7 @@ class HapiConnectorPlugin(Star):
 
         # LLM 工具集成
         from .llm_integration import LLMIntegration
+
         self.llm_integration = LLMIntegration(self)
 
     def _is_admin(self, event: AstrMessageEvent) -> bool:
@@ -128,41 +133,45 @@ class HapiConnectorPlugin(Star):
 
     @filter.llm_tool(name="hapi_coding_get_status")
     async def tool_get_status(self, event: AstrMessageEvent):
-        '''获取当前交互中的 HAPI session 的状态信息。'''
+        """获取当前交互中的 HAPI session 的状态信息。"""
         async for result in self.llm_integration.tool_get_status(event):
             yield result
 
     @filter.llm_tool(name="hapi_coding_list_sessions")
-    async def tool_list_sessions(self, event: AstrMessageEvent, window: str = "", path: str = "", agent: str = ""):
-        '''列出 HAPI 的可交互 session 列表。
+    async def tool_list_sessions(
+        self, event: AstrMessageEvent, window: str = "", path: str = "", agent: str = ""
+    ):
+        """列出 HAPI 的可交互 session 列表。
 
         Args:
             window(string): 窗口过滤，空=当前窗口，all=所有窗口
             path(string): 路径搜索关键词
             agent(string): 代理类型，claude/codex/gemini/opencode
-        '''
-        async for result in self.llm_integration.tool_list_sessions(event, window, path, agent):
+        """
+        async for result in self.llm_integration.tool_list_sessions(
+            event, window, path, agent
+        ):
             yield result
 
     @filter.llm_tool(name="hapi_coding_message_history")
     async def tool_message_history(self, event: AstrMessageEvent, rounds: int = 1):
-        '''查询当前交互中的 session 的历史消息。
+        """查询当前交互中的 session 的历史消息。
 
         Args:
             rounds(number): 查询最近几轮消息，默认1轮
-        '''
+        """
         async for result in self.llm_integration.tool_message_history(event, rounds):
             yield result
 
     @filter.llm_tool(name="hapi_coding_get_config_status")
     async def tool_get_config_status(self, event: AstrMessageEvent):
-        '''获取当前插件配置状态及可修改项说明。'''
+        """获取当前插件配置状态及可修改项说明。"""
         async for result in self.llm_integration.tool_get_config_status(event):
             yield result
 
     @filter.llm_tool(name="hapi_coding_list_commands")
     async def tool_list_commands(self, event: AstrMessageEvent, topic: str = ""):
-        '''列出所有可用的HAPI指令。根据用户问题选择对应专题：
+        """列出所有可用的HAPI指令。根据用户问题选择对应专题：
         - 会话：会话管理（创建、切换、列表、删除等）
         - 对话：对话与消息（发送消息、查看历史等）
         - 审批：审批权限请求（批准、拒绝等）
@@ -174,35 +183,42 @@ class HapiConnectorPlugin(Star):
 
         Args:
             topic(string): 帮助专题，可选值：会话/对话/审批/通知/文件/配置/全部
-        '''
+        """
         async for result in self.llm_integration.tool_list_commands(event, topic):
             yield result
 
     @filter.llm_tool(name="hapi_coding_send_message")
     async def tool_send_message(self, event: AstrMessageEvent, message: str):
-        '''向当前 session 发送消息。
+        """向当前 session 发送消息。
 
         Args:
             message(string): 要发送的消息内容
-        '''
+        """
         async for result in self.llm_integration.tool_send_message(event, message):
             yield result
 
     @filter.llm_tool(name="hapi_coding_switch_session")
     async def tool_switch_session(self, event: AstrMessageEvent, target: str):
-        '''切换到指定的 session。
+        """切换到指定的 session。
 
         Args:
             target(string): session序号如1或session ID前缀如abc12345
-        '''
+        """
         async for result in self.llm_integration.tool_switch_session(event, target):
             yield result
 
     @filter.llm_tool(name="hapi_coding_create_session")
-    async def tool_create_session(self, event: AstrMessageEvent, directory: str, agent: str,
-                                   machine_id: str = "", session_type: str = "simple", yolo: bool = False,
-                                   model_reasoning_effort: str = ""):
-        '''创建新的 coding session。创建成功后会自动切换到新session，无需手动调用switch_session。
+    async def tool_create_session(
+        self,
+        event: AstrMessageEvent,
+        directory: str,
+        agent: str,
+        machine_id: str = "",
+        session_type: str = "simple",
+        yolo: bool = False,
+        model_reasoning_effort: str = "",
+    ):
+        """创建新的 coding session。创建成功后会自动切换到新session，无需手动调用switch_session。
 
         Args:
             directory(string): 工作目录路径
@@ -211,35 +227,46 @@ class HapiConnectorPlugin(Star):
             session_type(string): session类型，simple或worktree，默认simple
             yolo(boolean): 是否自动批准所有权限，默认false
             model_reasoning_effort(string): 仅 Codex 可选；留空表示继承 Codex 默认设置，可选 none/minimal/low/medium/high/xhigh
-        '''
+        """
         async for result in self.llm_integration.tool_create_session(
-                event, directory, agent, machine_id, session_type, yolo, model_reasoning_effort):
+            event,
+            directory,
+            agent,
+            machine_id,
+            session_type,
+            yolo,
+            model_reasoning_effort,
+        ):
             yield result
 
     @filter.llm_tool(name="hapi_coding_change_config")
-    async def tool_change_config(self, event: AstrMessageEvent, config_name: str, value: str):
-        '''修改插件配置项。必须先调用hapi_coding_get_config_status查看可修改项。
+    async def tool_change_config(
+        self, event: AstrMessageEvent, config_name: str, value: str
+    ):
+        """修改插件配置项。必须先调用hapi_coding_get_config_status查看可修改项。
 
         Args:
             config_name(string): 配置项名称
             value(string): 新值
-        '''
-        async for result in self.llm_integration.tool_change_config(event, config_name, value):
+        """
+        async for result in self.llm_integration.tool_change_config(
+            event, config_name, value
+        ):
             yield result
 
     @filter.llm_tool(name="hapi_coding_stop_message")
     async def tool_stop_message(self, event: AstrMessageEvent):
-        '''停止当前 session 的消息生成。'''
+        """停止当前 session 的消息生成。"""
         async for result in self.llm_integration.tool_stop_message(event):
             yield result
 
     @filter.llm_tool(name="hapi_coding_execute_command")
     async def tool_execute_command(self, event: AstrMessageEvent, command: str):
-        '''直接执行HAPI指令。使用前请务必调用hapi_coding_list_commands查看指令格式和参数说明。
+        """直接执行HAPI指令。使用前请务必调用hapi_coding_list_commands查看指令格式和参数说明。
 
         Args:
             command(string): 完整的/hapi指令，不含/hapi前缀
-        '''
+        """
         async for result in self.llm_integration.tool_execute_command(event, command):
             yield result
 
@@ -327,7 +354,9 @@ class HapiConnectorPlugin(Star):
             return None
         return self._missing_machine_hint_text()
 
-    async def ensure_session_for_send(self, event: AstrMessageEvent, sid: str) -> tuple[bool, str, str]:
+    async def ensure_session_for_send(
+        self, event: AstrMessageEvent, sid: str
+    ) -> tuple[bool, str, str]:
         """Return an active session id for sending, resuming or respawning if needed."""
         await self._refresh_sessions()
         session = next((s for s in self.sessions_cache if s.get("id") == sid), None)
@@ -339,9 +368,17 @@ class HapiConnectorPlugin(Star):
         ok, msg, resumed_sid = await session_ops.resume_session(self.client, sid)
         if ok and resumed_sid:
             await self._refresh_sessions()
-            resumed = next((s for s in self.sessions_cache if s.get("id") == resumed_sid), None)
-            flavor = (resumed or session).get("metadata", {}).get("flavor") or self.state_mgr.effective_flavor(event) or "claude"
-            await self.state_mgr.capture_window(resumed_sid, event.unified_msg_origin, flavor)
+            resumed = next(
+                (s for s in self.sessions_cache if s.get("id") == resumed_sid), None
+            )
+            flavor = (
+                (resumed or session).get("metadata", {}).get("flavor")
+                or self.state_mgr.effective_flavor(event)
+                or "claude"
+            )
+            await self.state_mgr.capture_window(
+                resumed_sid, event.unified_msg_origin, flavor
+            )
             note = f"已恢复会话 [{resumed_sid[:8]}]\n"
             return True, resumed_sid, note
 
@@ -434,17 +471,29 @@ class HapiConnectorPlugin(Star):
             return
 
         await self.state_mgr.set_user_state(event)
-        visible_sids = {s.get("id") for s in self.state_mgr.visible_sessions_for_window(event, self.sessions_cache) if s.get("id")}
+        visible_sids = {
+            s.get("id")
+            for s in self.state_mgr.visible_sessions_for_window(
+                event, self.sessions_cache
+            )
+            if s.get("id")
+        }
         # 同时包含当前窗口 ID（用于 LLM 工具审批）
         visible_sids.add(event.unified_msg_origin)
         items = self.pending_mgr.flatten_pending(event, visible_sids)
         if not items:
             return  # 无待审批，静默
 
-        regular = [(sid, rid, req) for sid, rid, req in items
-                   if not formatters.is_question_request(req)]
-        questions = [(sid, rid, req) for sid, rid, req in items
-                     if formatters.is_question_request(req)]
+        regular = [
+            (sid, rid, req)
+            for sid, rid, req in items
+            if not formatters.is_question_request(req)
+        ]
+        questions = [
+            (sid, rid, req)
+            for sid, rid, req in items
+            if formatters.is_question_request(req)
+        ]
 
         if regular:
             result = await self.pending_mgr.approve_items(regular, self.client)
@@ -452,10 +501,17 @@ class HapiConnectorPlugin(Star):
                 yield event.plain_result(f"[戳一戳审批] {result}")
 
         if questions:
-            yield event.plain_result(f"[戳一戳审批] 还有 {len(questions)} 个问题需要回答:")
-            from astrbot.core.utils.session_waiter import session_waiter, SessionController
+            yield event.plain_result(
+                f"[戳一戳审批] 还有 {len(questions)} 个问题需要回答:"
+            )
+            from astrbot.core.utils.session_waiter import (
+                SessionController,
+                session_waiter,
+            )
+
             await self.pending_mgr.answer_questions_interactive(
-                event, questions, self.client, session_waiter, SessionController)
+                event, questions, self.client, session_waiter, SessionController
+            )
 
         event.stop_event()
 
@@ -471,7 +527,11 @@ class HapiConnectorPlugin(Star):
                 if isinstance(comp, Poke):
                     candidates = []
                     target_id = comp.target_id() if hasattr(comp, "target_id") else None
-                    for value in (target_id, getattr(comp, "id", None), getattr(comp, "qq", None)):
+                    for value in (
+                        target_id,
+                        getattr(comp, "id", None),
+                        getattr(comp, "qq", None),
+                    ):
                         if value is None:
                             continue
                         text = str(value).strip()
@@ -486,12 +546,72 @@ class HapiConnectorPlugin(Star):
         except Exception:
             return False
 
+    # ──── 直通模式处理器 ────
+
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=20)
+    async def bypass_handler(self, event: AstrMessageEvent):
+        """直通模式：将用户消息直接转发给 HAPI session，不经过 AstrBot LLM"""
+        if not self._is_admin(event):
+            return
+
+        if not self.state_mgr.get_bypass_mode(event):
+            return
+
+        raw = (event.message_str or "").strip()
+        if not raw:
+            return
+
+        # 跳过 /hapi 命令
+        lowered = raw.lower()
+        if lowered.startswith("/hapi") or lowered.startswith("hapi "):
+            return
+
+        self.notification_mgr._event_cache[event.unified_msg_origin] = event
+
+        await self.state_mgr.ensure_primary_session(event)
+        sid = self.state_mgr.effective_sid(event)
+        if not sid:
+            yield event.plain_result(
+                "直通模式：请先用 /hapi sw <序号> 选择一个 session"
+            )
+            event.stop_event()
+            return
+
+        ok_ready, ready_sid, ready_msg = await self.ensure_session_for_send(event, sid)
+        if not ok_ready:
+            yield event.plain_result(f"直通模式发送失败: {ready_msg}")
+            event.stop_event()
+            return
+
+        target_sid = ready_sid
+
+        # 提取并上传文件
+        files = file_ops.extract_files_from_message(event)
+        attachments = []
+        if files:
+            upload_msgs = []
+            for fpath in files:
+                ok, msg, attach = await file_ops.upload_file(
+                    self.client, target_sid, fpath
+                )
+                upload_msgs.append(msg)
+                if ok and attach:
+                    attachments.append(attach)
+            if upload_msgs:
+                yield event.plain_result("正在上传文件...\n" + "\n".join(upload_msgs))
+
+        ok, msg = await session_ops.send_message(
+            self.client, target_sid, raw, attachments
+        )
+        await self.state_mgr.set_user_state(event)
+        yield event.plain_result(ready_msg + msg)
+        event.stop_event()
+
     # ──── 快捷前缀处理器 ────
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=10)
     async def quick_prefix_handler(self, event: AstrMessageEvent):
         """快捷前缀: > 消息 或 >N 消息 (仅管理员)"""
-        from . import file_ops
         self.notification_mgr._event_cache[event.unified_msg_origin] = event
         prefix = self._quick_prefix
         raw = event.message_str
@@ -503,7 +623,7 @@ class HapiConnectorPlugin(Star):
             return  # 非管理员，静默忽略
 
         await self.state_mgr.ensure_primary_session(event)
-        rest = raw[len(prefix):]
+        rest = raw[len(prefix) :]
 
         if not rest:
             return  # 只有前缀，忽略
@@ -525,7 +645,9 @@ class HapiConnectorPlugin(Star):
                 target_sid = target["id"]
                 target_flavor = target.get("metadata", {}).get("flavor", "claude")
             else:
-                yield event.plain_result(f"无效序号 {idx}，共 {len(self.sessions_cache)} 个 session")
+                yield event.plain_result(
+                    f"无效序号 {idx}，共 {len(self.sessions_cache)} 个 session"
+                )
                 event.stop_event()
                 return
         else:
@@ -541,7 +663,9 @@ class HapiConnectorPlugin(Star):
             return
 
         reminder = ""
-        ok_ready, ready_sid, ready_msg = await self.ensure_session_for_send(event, target_sid)
+        ok_ready, ready_sid, ready_msg = await self.ensure_session_for_send(
+            event, target_sid
+        )
         if not ok_ready:
             yield event.plain_result(f"发送前恢复 session 失败: {ready_msg}")
             event.stop_event()
@@ -558,7 +682,9 @@ class HapiConnectorPlugin(Star):
         if files:
             upload_msgs = []
             for fpath in files:
-                ok, msg, attach = await file_ops.upload_file(self.client, target_sid, fpath)
+                ok, msg, attach = await file_ops.upload_file(
+                    self.client, target_sid, fpath
+                )
                 upload_msgs.append(msg)
                 if ok and attach:
                     attachments.append(attach)
@@ -571,7 +697,9 @@ class HapiConnectorPlugin(Star):
         if current_sid and current_sid != target_sid:
             reminder += f"→ 发送到 [{target_flavor}] {target_sid[:8]} (当前窗口: {current_sid[:8]})\n"
 
-        ok, msg = await session_ops.send_message(self.client, target_sid, text, attachments)
+        ok, msg = await session_ops.send_message(
+            self.client, target_sid, text, attachments
+        )
         await self.state_mgr.set_user_state(event)
         yield event.plain_result(reminder + msg)
         event.stop_event()
