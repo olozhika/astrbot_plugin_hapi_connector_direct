@@ -39,7 +39,9 @@ CODEX_REASONING_EFFORT_OPTIONS = [
     ("high", "high"),
     ("xhigh", "xhigh"),
 ]
-CODEX_REASONING_EFFORT_VALUES = [value for value, _ in CODEX_REASONING_EFFORT_OPTIONS if value]
+CODEX_REASONING_EFFORT_VALUES = [
+    value for value, _ in CODEX_REASONING_EFFORT_OPTIONS if value
+]
 
 # 支持的 Agent 类型
 AGENTS = ["claude", "codex", "gemini", "opencode"]
