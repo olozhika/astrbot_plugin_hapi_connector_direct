@@ -1,11 +1,12 @@
 """LLM 工具集成 - 为 LLM 提供 HAPI Coding Session 交互能力"""
 
 import asyncio
-from astrbot.api.event import filter, AstrMessageEvent, MessageChain
-from astrbot.api.provider import ProviderRequest
+
 from astrbot.api import logger
-from . import session_ops
-from . import formatters
+from astrbot.api.event import AstrMessageEvent, MessageChain
+from astrbot.api.provider import ProviderRequest
+
+from . import formatters, session_ops
 
 
 class LLMIntegration:
@@ -20,7 +21,9 @@ class LLMIntegration:
 
     # ──── 工具可见性控制 ────
 
-    async def on_llm_request_hook(self, event: AstrMessageEvent, request: ProviderRequest):
+    async def on_llm_request_hook(
+        self, event: AstrMessageEvent, request: ProviderRequest
+    ):
         """根据权限和窗口状态动态控制工具可见性"""
         # 1. 权限检查：非管理员移除所有工具
         is_admin = self.plugin._is_admin(event)
@@ -31,8 +34,12 @@ class LLMIntegration:
             return
 
         # 2. 上下文检查：窗口无可见 session 时只保留基础工具
-        visible_sessions = self.state_mgr.visible_sessions_for_window(event, self.sessions_cache)
-        logger.debug(f"[LLM工具] 可见session数: {len(visible_sessions)}, 总session数: {len(self.sessions_cache)}")
+        visible_sessions = self.state_mgr.visible_sessions_for_window(
+            event, self.sessions_cache
+        )
+        logger.debug(
+            f"[LLM工具] 可见session数: {len(visible_sessions)}, 总session数: {len(self.sessions_cache)}"
+        )
         if not visible_sessions:
             self._remove_hapi_tools(request, keep_basic=True)
             logger.debug("[LLM工具] 当前窗口无可见session，已移除非基础工具")
@@ -44,7 +51,7 @@ class LLMIntegration:
         Args:
             keep_basic: 是否保留基础工具（list_sessions/list_commands/execute_command）
         """
-        if not hasattr(request, 'func_tool') or not request.func_tool:
+        if not hasattr(request, "func_tool") or not request.func_tool:
             return
 
         # 基础工具（始终可用）
@@ -77,7 +84,9 @@ class LLMIntegration:
 
     # ──── 审批机制 ────
 
-    async def _require_approval(self, tool_name: str, args: dict, event: AstrMessageEvent) -> tuple[bool, str]:
+    async def _require_approval(
+        self, tool_name: str, args: dict, event: AstrMessageEvent
+    ) -> tuple[bool, str]:
         """请求审批并等待结果
 
         Returns:
@@ -87,14 +96,22 @@ class LLMIntegration:
         window_id = event.unified_msg_origin
 
         # 添加到 pending 队列（伪装成 HAPI 权限请求）
-        req_id, future, index = self.pending_mgr.add_llm_tool_request(window_id, tool_name, args)
+        req_id, future, index = self.pending_mgr.add_llm_tool_request(
+            window_id, tool_name, args
+        )
 
         # 计算当前待审批总数（LLM 工具审批不受窗口限制，统计所有待审批）
         items = self.pending_mgr.flatten_pending(None, None)
         total = len(items)
 
         # 计算窗口数量
-        visible_sids = {s.get("id") for s in self.state_mgr.visible_sessions_for_window(event, self.sessions_cache) if s.get("id")}
+        visible_sids = {
+            s.get("id")
+            for s in self.state_mgr.visible_sessions_for_window(
+                event, self.sessions_cache
+            )
+            if s.get("id")
+        }
         visible_sids.add(event.unified_msg_origin)
         window_items = self.pending_mgr.flatten_pending(event, visible_sids)
         window_total = len(window_items)
@@ -136,7 +153,10 @@ class LLMIntegration:
             self.pending_mgr.remove_entry(window_id, req_id)
             logger.warning(f"LLM 工具 {tool_name} 审批超时（60秒无响应）")
             # 如果处于忙时托管时段，超时默认允许
-            if self.plugin.sse_listener._auto_approve_enabled and self.plugin.sse_listener._in_auto_approve_window():
+            if (
+                self.plugin.sse_listener._auto_approve_enabled
+                and self.plugin.sse_listener._in_auto_approve_window()
+            ):
                 logger.info(f"忙时托管时段，自动批准 {tool_name}")
                 return True, "auto_approved"
             return False, "timeout"
@@ -160,7 +180,7 @@ class LLMIntegration:
     # ──── 查询类工具（无需审批）────
 
     async def tool_get_status(self, event: AstrMessageEvent):
-        '''获取当前交互中的 HAPI session 的状态信息。'''
+        """获取当前交互中的 HAPI session 的状态信息。"""
         sid = self._effective_sid(event)
         if not sid:
             yield self._missing_session_text()
@@ -172,16 +192,20 @@ class LLMIntegration:
         except Exception as e:
             yield f"获取状态失败: {e}"
 
-    async def tool_list_sessions(self, event: AstrMessageEvent, window: str = "", path: str = "", agent: str = ""):
-        '''列出 HAPI 的可交互 session 列表。
+    async def tool_list_sessions(
+        self, event: AstrMessageEvent, window: str = "", path: str = "", agent: str = ""
+    ):
+        """列出 HAPI 的可交互 session 列表。
 
         Args:
             window(string): 按聊天窗口过滤（默认为空表示当前窗口，设为 'all' 查询所有聊天窗口，用户没有明确要求时一般置空）
             path(string): 按路径搜索
             agent(string): 按代理类型过滤（claude/codex/gemini/opencode）
-        '''
+        """
         # 当前窗口无session时，自动查询所有session
-        visible_sessions = self.state_mgr.visible_sessions_for_window(event, self.sessions_cache)
+        visible_sessions = self.state_mgr.visible_sessions_for_window(
+            event, self.sessions_cache
+        )
         if not visible_sessions and window == "":
             window = "all"
             auto_switched = True
@@ -195,9 +219,17 @@ class LLMIntegration:
 
         # 过滤
         if path:
-            sessions = [s for s in sessions if path.lower() in s.get("metadata", {}).get("path", "").lower()]
+            sessions = [
+                s
+                for s in sessions
+                if path.lower() in s.get("metadata", {}).get("path", "").lower()
+            ]
         if agent:
-            sessions = [s for s in sessions if s.get("metadata", {}).get("flavor", "").lower() == agent.lower()]
+            sessions = [
+                s
+                for s in sessions
+                if s.get("metadata", {}).get("flavor", "").lower() == agent.lower()
+            ]
 
         if not sessions:
             yield "没有找到符合条件的 session"
@@ -205,7 +237,12 @@ class LLMIntegration:
 
         # 复用 formatters.format_session_list，但移除 emoji
         current_sid = self._effective_sid(event)
-        text = formatters.format_session_list(sessions, current_sid, self.sessions_cache, header_current_window=event.unified_msg_origin)
+        text = formatters.format_session_list(
+            sessions,
+            current_sid,
+            self.sessions_cache,
+            header_current_window=event.unified_msg_origin,
+        )
 
         # 替换 emoji 为文字
         text = text.replace("📁", "[目录]")
@@ -224,11 +261,11 @@ class LLMIntegration:
         yield text
 
     async def tool_message_history(self, event: AstrMessageEvent, rounds: int = 1):
-        '''查询当前交互中的 session 的历史消息。
+        """查询当前交互中的 session 的历史消息。
 
         Args:
             rounds(number): 查询最近几轮消息（默认 1 轮）
-        '''
+        """
         sid = self._effective_sid(event)
         if not sid:
             yield self._missing_session_text()
@@ -257,7 +294,7 @@ class LLMIntegration:
             yield f"获取消息失败: {e}"
 
     async def tool_get_config_status(self, event: AstrMessageEvent):
-        '''获取当前插件配置状态及可修改项说明。'''
+        """获取当前插件配置状态及可修改项说明。"""
         output_level = self.plugin.config.get("output_level", "simple")
         auto_approve = self.plugin.sse_listener._auto_approve_enabled
         auto_start = self.plugin.sse_listener._auto_approve_start
@@ -274,11 +311,11 @@ output_level (SSE推送级别): {output_level}
   - summary: 任务完成时推送最近的 agent 消息
   - detail: 实时推送所有新消息（信息量较大）
 
-auto_approve_enabled (忙时自动审批): {'开启' if auto_approve else '关闭'}
+auto_approve_enabled (忙时自动审批): {"开启" if auto_approve else "关闭"}
   时间段: {auto_start} - {auto_end}
   值: true/false
 
-remind_pending (定时提醒待审批): {'开启' if remind else '关闭'}
+remind_pending (定时提醒待审批): {"开启" if remind else "关闭"}
   间隔: {remind_interval} 秒
   值: true/false
 
@@ -287,28 +324,30 @@ quick_prefix (快捷前缀): {quick_prefix}
         yield info
 
     async def tool_list_commands(self, event: AstrMessageEvent, topic: str = ""):
-        '''列出所有可用的 HAPI 指令。
+        """列出所有可用的 HAPI 指令。
 
         Args:
             topic(string): 帮助主题（可选，默认显示常用帮助）
-        '''
+        """
         yield formatters.get_help_text(topic)
 
     # ──── 操作类工具（需要审批）────
 
     async def tool_send_message(self, event: AstrMessageEvent, message: str):
-        '''向当前 session 发送消息。
+        """向当前 session 发送消息。
 
         Args:
             message(string): 要发送的消息内容
-        '''
+        """
         sid = self._effective_sid(event)
         if not sid:
             yield self._missing_session_text()
             return
 
         # 请求审批
-        approved, reason = await self._require_approval("hapi_coding_send_message", {"message": message}, event)
+        approved, reason = await self._require_approval(
+            "hapi_coding_send_message", {"message": message}, event
+        )
         logger.debug(f"[tool_send_message] approved={approved}, reason={reason}")
         if not approved:
             if reason == "timeout":
@@ -319,7 +358,9 @@ quick_prefix (快捷前缀): {quick_prefix}
                 yield "操作已被用户拒绝，请停止工具调用，先交流清楚问题"
             return
 
-        ok_ready, ready_sid, ready_msg = await self.plugin.ensure_session_for_send(event, sid)
+        ok_ready, ready_sid, ready_msg = await self.plugin.ensure_session_for_send(
+            event, sid
+        )
         if not ok_ready:
             yield f"发送前恢复 session 失败: {ready_msg}"
             return
@@ -331,13 +372,15 @@ quick_prefix (快捷前缀): {quick_prefix}
         yield result if ok else f"发送失败: {result}"
 
     async def tool_switch_session(self, event: AstrMessageEvent, target: str):
-        '''切换到指定的 session。
+        """切换到指定的 session。
 
         Args:
             target(string): session 序号（如 "1"）或 session ID（如 "abc12345"）
-        '''
+        """
         # 请求审批
-        approved, reason = await self._require_approval("hapi_coding_switch_session", {"target": target}, event)
+        approved, reason = await self._require_approval(
+            "hapi_coding_switch_session", {"target": target}, event
+        )
         if not approved:
             if reason == "timeout":
                 yield "操作超时：60秒内未收到用户审批。请提醒用户使用 /hapi a 批准或 /hapi deny 拒绝。"
@@ -350,17 +393,24 @@ quick_prefix (快捷前缀): {quick_prefix}
         # 复用 cmd_sw 逻辑，提取消息内容返回给 LLM
         async for result in self.plugin.cmd_handlers.cmd_sw(event, target):
             # result 是 MessageChain，提取文本内容
-            if hasattr(result, 'chain'):
+            if hasattr(result, "chain"):
                 for seg in result.chain:
-                    if hasattr(seg, 'text'):
+                    if hasattr(seg, "text"):
                         yield seg.text
             else:
                 yield str(result)
 
-    async def tool_create_session(self, event: AstrMessageEvent, directory: str, agent: str,
-                                   machine_id: str = "", session_type: str = "simple", yolo: bool = False,
-                                   model_reasoning_effort: str = ""):
-        '''创建新的 coding session。
+    async def tool_create_session(
+        self,
+        event: AstrMessageEvent,
+        directory: str,
+        agent: str,
+        machine_id: str = "",
+        session_type: str = "simple",
+        yolo: bool = False,
+        model_reasoning_effort: str = "",
+    ):
+        """创建新的 coding session。
 
         Args:
             directory(string): 工作目录路径
@@ -369,7 +419,7 @@ quick_prefix (快捷前缀): {quick_prefix}
             session_type(string): session 类型（simple/worktree，默认 simple）
             yolo(boolean): 是否自动批准所有权限（默认 false）
             model_reasoning_effort(string): 仅 Codex 可选；留空表示继承 Codex 默认设置，可选 none/minimal/low/medium/high/xhigh
-        '''
+        """
         # 获取机器列表
         try:
             machines = await session_ops.fetch_machines(self.client)
@@ -383,6 +433,7 @@ quick_prefix (快捷前缀): {quick_prefix}
 
         agent = (agent or "").strip().lower()
         from .constants import AGENTS
+
         if agent not in AGENTS:
             yield f"不支持的 agent: {agent}，可选: {', '.join(AGENTS)}"
             return
@@ -405,6 +456,7 @@ quick_prefix (快捷前缀): {quick_prefix}
         normalized_effort = (model_reasoning_effort or "").strip().lower()
         if agent == "codex":
             from .constants import CODEX_REASONING_EFFORT_VALUES
+
             inherit_aliases = {"", "inherit", "default", "auto"}
             if normalized_effort in inherit_aliases:
                 normalized_effort = ""
@@ -415,14 +467,20 @@ quick_prefix (快捷前缀): {quick_prefix}
             yield "只有 Codex 支持 model_reasoning_effort；其他代理请留空"
             return
 
-        approval_payload = {"machine_id": machine_id, "directory": directory,
-                            "agent": agent, "session_type": session_type, "yolo": yolo}
+        approval_payload = {
+            "machine_id": machine_id,
+            "directory": directory,
+            "agent": agent,
+            "session_type": session_type,
+            "yolo": yolo,
+        }
         if agent == "codex":
             approval_payload["model_reasoning_effort"] = normalized_effort or "inherit"
 
         # 请求审批
-        approved, reason = await self._require_approval("hapi_coding_create_session",
-                                           approval_payload, event)
+        approved, reason = await self._require_approval(
+            "hapi_coding_create_session", approval_payload, event
+        )
         if not approved:
             if reason == "timeout":
                 yield "操作超时：60秒内未收到用户审批。请提醒用户使用 /hapi a 批准或 /hapi deny 拒绝。"
@@ -433,23 +491,36 @@ quick_prefix (快捷前缀): {quick_prefix}
             return
 
         # 执行创建
-        ok, msg, sid = await session_ops.spawn_session(self.client, machine_id, directory, agent, session_type, yolo, model_reasoning_effort=normalized_effort or None)
+        ok, msg, sid = await session_ops.spawn_session(
+            self.client,
+            machine_id,
+            directory,
+            agent,
+            session_type,
+            yolo,
+            model_reasoning_effort=normalized_effort or None,
+        )
         if ok and sid:
             await self.state_mgr.capture_window(sid, event.unified_msg_origin, agent)
             yield f"✅ 已创建 session: {sid[:8]}"
         else:
             yield f"创建失败: {msg}"
 
-    async def tool_change_config(self, event: AstrMessageEvent, config_name: str, value: str):
-        '''修改插件配置项。必须先调用 hapi_coding_get_config_status 查看可修改项。
+    async def tool_change_config(
+        self, event: AstrMessageEvent, config_name: str, value: str
+    ):
+        """修改插件配置项。必须先调用 hapi_coding_get_config_status 查看可修改项。
 
         Args:
             config_name(string): 配置项名称
             value(string): 新值
-        '''
+        """
         # 请求审批
-        approved, reason = await self._require_approval("hapi_coding_change_config",
-                                           {"config_name": config_name, "value": value}, event)
+        approved, reason = await self._require_approval(
+            "hapi_coding_change_config",
+            {"config_name": config_name, "value": value},
+            event,
+        )
         if not approved:
             if reason == "timeout":
                 yield "操作超时：60秒内未收到用户审批。请提醒用户使用 /hapi a 批准或 /hapi deny 拒绝。"
@@ -489,14 +560,16 @@ quick_prefix (快捷前缀): {quick_prefix}
             yield f"不支持的配置项: {config_name}，请先调用 hapi_coding_get_config_status 查看可用配置"
 
     async def tool_stop_message(self, event: AstrMessageEvent):
-        '''停止当前 session 的消息生成。'''
+        """停止当前 session 的消息生成。"""
         sid = self._effective_sid(event)
         if not sid:
             yield self._missing_session_text()
             return
 
         # 请求审批
-        approved, reason = await self._require_approval("hapi_coding_stop_message", {"session_id": sid[:8]}, event)
+        approved, reason = await self._require_approval(
+            "hapi_coding_stop_message", {"session_id": sid[:8]}, event
+        )
         if not approved:
             if reason == "timeout":
                 yield "操作超时：60秒内未收到用户审批。请提醒用户使用 /hapi a 批准或 /hapi deny 拒绝。"
@@ -513,13 +586,15 @@ quick_prefix (快捷前缀): {quick_prefix}
         yield msg
 
     async def tool_execute_command(self, event: AstrMessageEvent, command: str):
-        '''直接执行hapi相关指令。当用户希望执行hapi相关指令操作时，使用此工具，而不是使用默认的shell。使用前请务必调用 hapi_coding_list_commands 查看指令格式和参数说明，错误的指令可能导致不可预料的后果。
+        """直接执行hapi相关指令。当用户希望执行hapi相关指令操作时，使用此工具，而不是使用默认的shell。使用前请务必调用 hapi_coding_list_commands 查看指令格式和参数说明，错误的指令可能导致不可预料的后果。
 
         Args:
             command(string): 完整的 /hapi 指令（不含 /hapi 前缀）
-        '''
+        """
         # 请求审批
-        approved, reason = await self._require_approval("hapi_coding_execute_command", {"command": command}, event)
+        approved, reason = await self._require_approval(
+            "hapi_coding_execute_command", {"command": command}, event
+        )
         if not approved:
             if reason == "timeout":
                 yield "操作超时：60秒内未收到用户审批。请提醒用户使用 /hapi a 批准或 /hapi deny 拒绝。"
@@ -532,17 +607,19 @@ quick_prefix (快捷前缀): {quick_prefix}
         # 执行命令
         logger.info(f"[LLM工具] 开始执行命令: {command}")
         results = []
-        async for result in self.plugin.cmd_handlers.cmd_hapi_router(event, f"/hapi {command}"):
+        async for result in self.plugin.cmd_handlers.cmd_hapi_router(
+            event, f"/hapi {command}"
+        ):
             logger.info(f"[LLM工具] 收到结果，类型: {type(result)}")
 
             # 立即发送给用户
             await event.send(result)
 
             # 提取文本
-            if hasattr(result, 'chain'):
+            if hasattr(result, "chain"):
                 text_parts = []
                 for seg in result.chain:
-                    if hasattr(seg, 'text'):
+                    if hasattr(seg, "text"):
                         text_parts.append(seg.text)
                 if text_parts:
                     text = "".join(text_parts)
@@ -553,10 +630,19 @@ quick_prefix (快捷前缀): {quick_prefix}
 
         # 检测交互式命令
         cmd_name = command.strip().split()[0] if command.strip() else ""
-        interactive_cmds = ['create', 'delete', 'rename', 'archive', 'perm', 'model', 'output', 'prune']
+        interactive_cmds = [
+            "create",
+            "delete",
+            "rename",
+            "archive",
+            "perm",
+            "model",
+            "output",
+            "prune",
+        ]
 
         if cmd_name in interactive_cmds:
-            yield f"这是一条交互式命令，用户已自行完成交互设置，你可以自行思考和查看操作结果"
+            yield "这是一条交互式命令，用户已自行完成交互设置，你可以自行思考和查看操作结果"
         elif results:
             yield "\n\n".join(results)
         else:
