@@ -1,9 +1,9 @@
 """用户状态和通知窗口绑定管理"""
 
-from astrbot.api.event import AstrMessageEvent
 from astrbot.api import logger
-from .binding_manager import BindingManager
+from astrbot.api.event import AstrMessageEvent
 
+from .binding_manager import BindingManager
 
 NOTIFICATION_ROUTE_FLAVORS = ("claude", "codex", "gemini")
 
@@ -26,7 +26,9 @@ class StateManager:
     async def persist_window_state(self, umo: str):
         """持久化单个窗口状态；不存在时删除对应 KV"""
         window_state = self.binding_mgr._window_states.get(umo)
-        await self.kv.put_kv_data(f"window_state_{umo}", window_state if window_state else None)
+        await self.kv.put_kv_data(
+            f"window_state_{umo}", window_state if window_state else None
+        )
 
     # ──── 通知窗口绑定 ────
 
@@ -68,8 +70,10 @@ class StateManager:
             self._user_states_cache[sender_id] = state
 
         # 存储消息ID（用于QQ官渠回复）
-        if hasattr(event, 'message_id') and event.message_id:
-            self.binding_mgr.set_window_message_id(event.unified_msg_origin, str(event.message_id))
+        if hasattr(event, "message_id") and event.message_id:
+            self.binding_mgr.set_window_message_id(
+                event.unified_msg_origin, str(event.message_id)
+            )
 
         # 维护 known_users 列表
         known = [str(uid) for uid in await self.kv.get_kv_data("known_users", [])]
@@ -84,7 +88,11 @@ class StateManager:
         state = self._user_states_cache.get(sender_id, {})
         if not state.get("primary_umo"):
             await self.set_user_state(event, primary_umo=umo)
-            logger.info("设置用户 %s 的主会话: %s", sender_id, umo[:20] if len(umo) > 20 else umo)
+            logger.info(
+                "设置用户 %s 的主会话: %s",
+                sender_id,
+                umo[:20] if len(umo) > 20 else umo,
+            )
         else:
             await self.set_user_state(event)
 
@@ -123,7 +131,9 @@ class StateManager:
         """Get current user's flavor-specific default notification windows."""
         return self.normalized_flavor_primary_umos(self.get_user_state(event))
 
-    def flavor_primary_umo(self, event: AstrMessageEvent, flavor: str | None) -> str | None:
+    def flavor_primary_umo(
+        self, event: AstrMessageEvent, flavor: str | None
+    ) -> str | None:
         """Get current user's flavor-specific default notification window."""
         if not flavor:
             return None
@@ -151,7 +161,23 @@ class StateManager:
             return None
         return self.binding_mgr.get_window_flavor(primary_umo)
 
-    def visible_sessions_for_window(self, event: AstrMessageEvent, sessions_cache: list[dict]) -> list[dict]:
+    # ──── 直通模式 ────
+
+    async def set_bypass_mode(self, event: AstrMessageEvent, enabled: bool):
+        sender_id = str(event.get_sender_id())
+        state = dict(self._user_states_cache.get(sender_id, {}))
+        state["bypass_enabled"] = enabled
+        self._user_states_cache[sender_id] = state
+        await self.kv.put_kv_data(f"user_state_{sender_id}", state)
+
+    def get_bypass_mode(self, event: AstrMessageEvent) -> bool:
+        sender_id = str(event.get_sender_id())
+        state = self._user_states_cache.get(sender_id, {})
+        return bool(state.get("bypass_enabled", False))
+
+    def visible_sessions_for_window(
+        self, event: AstrMessageEvent, sessions_cache: list[dict]
+    ) -> list[dict]:
         """返回当前窗口会接收通知的 session 列表"""
         current_umo = event.unified_msg_origin
         primary_umo = self.primary_umo(event)
@@ -213,7 +239,9 @@ class StateManager:
             targets.append(primary_umo)
         return targets
 
-    def select_notification_targets(self, session_id: str, sessions_cache: list[dict]) -> list[str]:
+    def select_notification_targets(
+        self, session_id: str, sessions_cache: list[dict]
+    ) -> list[str]:
         """根据 session 选择最终通知窗口；同一通知只投递到一个窗口。"""
         if session_id:
             owners = self.binding_mgr.get_owners(session_id)
@@ -224,9 +252,13 @@ class StateManager:
             if bound_umo:
                 return [bound_umo]
 
-            session = next((s for s in sessions_cache if s.get("id") == session_id), None)
+            session = next(
+                (s for s in sessions_cache if s.get("id") == session_id), None
+            )
             flavor = session.get("metadata", {}).get("flavor") if session else None
-            flavor_targets = self.get_flavor_primary_windows(str(flavor).strip().lower() if flavor else None)
+            flavor_targets = self.get_flavor_primary_windows(
+                str(flavor).strip().lower() if flavor else None
+            )
             if flavor_targets:
                 return [flavor_targets[0]]
 
@@ -254,7 +286,9 @@ class StateManager:
         if flavor_routes:
             lines.append("Flavor 默认窗口:")
             for flavor in sorted(flavor_routes):
-                lines.append(f"  {flavor}: {self.format_umo_for_display(flavor_routes[flavor])}")
+                lines.append(
+                    f"  {flavor}: {self.format_umo_for_display(flavor_routes[flavor])}"
+                )
 
         return lines
 
@@ -299,7 +333,7 @@ class StateManager:
                 self.binding_mgr.set_window_state(
                     umo,
                     window_state.get("current_session", ""),
-                    window_state.get("current_flavor", "")
+                    window_state.get("current_flavor", ""),
                 )
 
     async def migrate_to_capture_model(self):
@@ -332,10 +366,16 @@ class StateManager:
                         break
 
                 if target_umo:
-                    self.binding_mgr.bind_window(old_session, target_umo, old_flavor or "unknown")
+                    self.binding_mgr.bind_window(
+                        old_session, target_umo, old_flavor or "unknown"
+                    )
                     await self.persist_session_owners()
                     await self.persist_window_state(target_umo)
-                    logger.info("迁移用户 %s: current_session → window_state[%s]", uid, target_umo[:20])
+                    logger.info(
+                        "迁移用户 %s: current_session → window_state[%s]",
+                        uid,
+                        target_umo[:20],
+                    )
 
             # 清理用户状态中的窗口级别字段
             if "current_session" in state:
