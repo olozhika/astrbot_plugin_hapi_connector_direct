@@ -1,25 +1,16 @@
 """创建 Session 向导状态机：步骤推进、输入校验、提示文本构建"""
 
-from .constants import (
-    AGENTS,
-    CODEX_REASONING_EFFORT_OPTIONS,
-    CODEX_REASONING_EFFORT_VALUES,
-)
+from .constants import AGENTS, CODEX_REASONING_EFFORT_OPTIONS, CODEX_REASONING_EFFORT_VALUES
 
 
 class WizardResult:
     """向导单步处理结果"""
-
     __slots__ = ("prompt", "need_recent_paths", "confirmed", "cancelled")
 
-    def __init__(
-        self,
-        prompt: str = "",
-        *,
-        need_recent_paths: bool = False,
-        confirmed: bool = False,
-        cancelled: bool = False,
-    ):
+    def __init__(self, prompt: str = "", *,
+                 need_recent_paths: bool = False,
+                 confirmed: bool = False,
+                 cancelled: bool = False):
         self.prompt = prompt
         self.need_recent_paths = need_recent_paths
         self.confirmed = confirmed
@@ -70,8 +61,8 @@ class CreateWizard:
             return WizardResult("\n".join(lines))
         # 单机器，跳到步骤 2，需要先拉 recent_paths
         return WizardResult(
-            f"自动选择机器: {s['machine_label']}", need_recent_paths=True
-        )
+            f"自动选择机器: {s['machine_label']}",
+            need_recent_paths=True)
 
     def _step2_prompt(self, prefix: str = "") -> str:
         """构建步骤 2 的提示文本"""
@@ -106,9 +97,7 @@ class CreateWizard:
         for i, (_, label) in enumerate(CODEX_REASONING_EFFORT_OPTIONS, 1):
             lines.append(f"  [{i}] {label}")
         lines.append("回复序号选择，或直接输入 none/minimal/low/medium/high/xhigh")
-        lines.append(
-            "注意：旧版本 HAPI (小于0.16.2) 不支持 codex_reasoning_effort 参数，选择可能无效"
-        )
+        lines.append("注意：旧版本 HAPI (小于0.16.2) 不支持 codex_reasoning_effort 参数，选择可能无效")
         return WizardResult("\n".join(lines))
 
     def process(self, raw: str) -> WizardResult:
@@ -144,7 +133,9 @@ class CreateWizard:
         s["machine_id"] = s["machines"][idx]["id"]
         s["machine_label"] = s["labels"][idx]
         s["step"] = 2
-        return WizardResult(f"已选机器: {s['machine_label']}", need_recent_paths=True)
+        return WizardResult(
+            f"已选机器: {s['machine_label']}",
+            need_recent_paths=True)
 
     def _step2(self, raw: str) -> WizardResult:
         """步骤 2: 工作目录"""
@@ -155,11 +146,7 @@ class CreateWizard:
         elif raw:
             # 修复：如果 Unix 路径开头的 / 被命令前缀吃掉，自动补回
             # Windows 盘符路径 (C:\...) 不处理
-            if (
-                raw
-                and not raw.startswith(("/", "\\"))
-                and not (len(raw) >= 2 and raw[1] == ":")
-            ):
+            if raw and not raw.startswith(("/", "\\")) and not (len(raw) >= 2 and raw[1] == ":"):
                 if raw.startswith(("home", "Users", "root", "opt", "var", "usr")):
                     raw = "/" + raw
             s["directory"] = raw
@@ -233,17 +220,13 @@ class CreateWizard:
         """步骤 4.1: 选择 Codex 思考深度"""
         s = self.state
         if raw.isdigit() and 1 <= int(raw) <= len(CODEX_REASONING_EFFORT_OPTIONS):
-            s["model_reasoning_effort"] = CODEX_REASONING_EFFORT_OPTIONS[int(raw) - 1][
-                0
-            ]
+            s["model_reasoning_effort"] = CODEX_REASONING_EFFORT_OPTIONS[int(raw) - 1][0]
         else:
             normalized = raw.strip().lower()
             if normalized in CODEX_REASONING_EFFORT_VALUES:
                 s["model_reasoning_effort"] = normalized
             else:
-                return WizardResult(
-                    "请输入有效序号，或直接输入 none/minimal/low/medium/high/xhigh"
-                )
+                return WizardResult("请输入有效序号，或直接输入 none/minimal/low/medium/high/xhigh")
 
         s["step"] = 5
         return self._step5_prompt()
@@ -273,9 +256,7 @@ class CreateWizard:
         if s["worktree_name"]:
             lines.append(f"  工作树名: {s['worktree_name']}")
         if s["agent"] == "codex" and s["yolo"]:
-            lines.append(
-                "\n⚠ 提醒: Codex YOLO 模式需要在.codex配置文件中设置信任文件夹，否则可能无法使用 tools:"
-            )
+            lines.append(f"\n⚠ 提醒: Codex YOLO 模式需要在.codex配置文件中设置信任文件夹，否则可能无法使用 tools:")
             lines.append(f'  [projects."{s["directory"]}"]')
             lines.append('  trust_level = "trusted"')
         lines.append("\n回复 y 确认创建，其他取消")
