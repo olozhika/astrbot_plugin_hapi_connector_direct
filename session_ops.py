@@ -23,7 +23,9 @@ async def fetch_session_detail(client: AsyncHapiClient, sid: str) -> dict:
     return data.get("session", data)
 
 
-async def fetch_messages(client: AsyncHapiClient, sid: str, limit: int = 10) -> list[dict]:
+async def fetch_messages(
+    client: AsyncHapiClient, sid: str, limit: int = 10
+) -> list[dict]:
     """获取 session 的最近消息"""
     resp = await client.get(f"/api/sessions/{sid}/messages", params={"limit": limit})
     resp.raise_for_status()
@@ -32,7 +34,9 @@ async def fetch_messages(client: AsyncHapiClient, sid: str, limit: int = 10) -> 
     return data.get("messages", [])
 
 
-async def send_message(client: AsyncHapiClient, sid: str, text: str) -> tuple[bool, str]:
+async def send_message(
+    client: AsyncHapiClient, sid: str, text: str
+) -> tuple[bool, str]:
     """发送消息到 session，返回 (成功, 描述)"""
     resp = await client.post(f"/api/sessions/{sid}/messages", json={"text": text})
     if resp.ok:
@@ -44,8 +48,9 @@ async def send_message(client: AsyncHapiClient, sid: str, text: str) -> tuple[bo
         return False, f"发送失败: {resp.status} {body[:200]}"
 
 
-async def send_message(client: AsyncHapiClient, sid: str, text: str,
-                       attachments: list[dict] | None = None) -> tuple[bool, str]:
+async def send_message(
+    client: AsyncHapiClient, sid: str, text: str, attachments: list[dict] | None = None
+) -> tuple[bool, str]:
     """Send a message to a session, optionally with uploaded attachments."""
     payload = {"text": text}
     if attachments:
@@ -63,9 +68,13 @@ async def send_message(client: AsyncHapiClient, sid: str, text: str,
     return False, f"send failed: {resp.status} {body[:200]}"
 
 
-async def set_permission_mode(client: AsyncHapiClient, sid: str, mode: str) -> tuple[bool, str]:
+async def set_permission_mode(
+    client: AsyncHapiClient, sid: str, mode: str
+) -> tuple[bool, str]:
     """设置权限模式"""
-    resp = await client.post(f"/api/sessions/{sid}/permission-mode", json={"mode": mode})
+    resp = await client.post(
+        f"/api/sessions/{sid}/permission-mode", json={"mode": mode}
+    )
     if resp.ok:
         resp.release()
         return True, f"权限模式已切换为: {mode}"
@@ -75,7 +84,9 @@ async def set_permission_mode(client: AsyncHapiClient, sid: str, mode: str) -> t
         return False, f"切换失败: {resp.status} {body[:200]}"
 
 
-async def set_model_mode(client: AsyncHapiClient, sid: str, model: str) -> tuple[bool, str]:
+async def set_model_mode(
+    client: AsyncHapiClient, sid: str, model: str
+) -> tuple[bool, str]:
     """设置模型模式（仅 Claude）"""
     resp = await client.post(f"/api/sessions/{sid}/model", json={"model": model})
     if resp.ok:
@@ -87,7 +98,9 @@ async def set_model_mode(client: AsyncHapiClient, sid: str, model: str) -> tuple
         return False, f"切换失败: {resp.status} {body[:200]}"
 
 
-async def set_effort(client: AsyncHapiClient, sid: str, effort: str | None) -> tuple[bool, str]:
+async def set_effort(
+    client: AsyncHapiClient, sid: str, effort: str | None
+) -> tuple[bool, str]:
     """设置推理强度（仅 Claude）"""
     resp = await client.post(f"/api/sessions/{sid}/effort", json={"effort": effort})
     if resp.ok:
@@ -100,9 +113,14 @@ async def set_effort(client: AsyncHapiClient, sid: str, effort: str | None) -> t
         return False, f"切换失败: {resp.status} {body[:200]}"
 
 
-async def set_codex_reasoning_effort(client: AsyncHapiClient, sid: str, effort: str | None) -> tuple[bool, str]:
+async def set_codex_reasoning_effort(
+    client: AsyncHapiClient, sid: str, effort: str | None
+) -> tuple[bool, str]:
     """设置 Codex 推理强度"""
-    resp = await client.post(f"/api/sessions/{sid}/model-reasoning-effort", json={"modelReasoningEffort": effort})
+    resp = await client.post(
+        f"/api/sessions/{sid}/model-reasoning-effort",
+        json={"modelReasoningEffort": effort},
+    )
     if resp.ok:
         resp.release()
         label = effort or "继承默认"
@@ -113,9 +131,13 @@ async def set_codex_reasoning_effort(client: AsyncHapiClient, sid: str, effort: 
         return False, f"切换失败: {resp.status} {body[:200]}"
 
 
-async def set_collaboration_mode(client: AsyncHapiClient, sid: str, mode: str) -> tuple[bool, str]:
+async def set_collaboration_mode(
+    client: AsyncHapiClient, sid: str, mode: str
+) -> tuple[bool, str]:
     """设置协作模式（仅 Codex remote）"""
-    resp = await client.post(f"/api/sessions/{sid}/collaboration-mode", json={"mode": mode})
+    resp = await client.post(
+        f"/api/sessions/{sid}/collaboration-mode", json={"mode": mode}
+    )
     if resp.ok:
         resp.release()
         return True, f"协作模式已切换为: {mode}"
@@ -125,11 +147,14 @@ async def set_collaboration_mode(client: AsyncHapiClient, sid: str, mode: str) -
         return False, f"切换失败: {resp.status} {body[:200]}"
 
 
-async def approve_permission(client: AsyncHapiClient, sid: str, rid: str,
-                             answers: dict | None = None) -> tuple[bool, str]:
+async def approve_permission(
+    client: AsyncHapiClient, sid: str, rid: str, answers: dict | None = None
+) -> tuple[bool, str]:
     """批准权限请求；AskUserQuestion 需传 answers={"0": ["选项label"]}"""
     body = {"answers": answers} if answers else {}
-    resp = await client.post(f"/api/sessions/{sid}/permissions/{rid}/approve", json=body)
+    resp = await client.post(
+        f"/api/sessions/{sid}/permissions/{rid}/approve", json=body
+    )
     if resp.ok:
         resp.release()
         return True, "已批准"
@@ -139,13 +164,16 @@ async def approve_permission(client: AsyncHapiClient, sid: str, rid: str,
         return False, f"批准失败: {resp.status} {body_text[:200]}"
 
 
-async def answer_permission_question(client: AsyncHapiClient, sid: str, rid: str,
-                                     answers: dict) -> tuple[bool, str]:
+async def answer_permission_question(
+    client: AsyncHapiClient, sid: str, rid: str, answers: dict
+) -> tuple[bool, str]:
     """提交 AskUserQuestion 的回答。"""
     return await approve_permission(client, sid, rid, answers=answers)
 
 
-async def deny_permission(client: AsyncHapiClient, sid: str, rid: str) -> tuple[bool, str]:
+async def deny_permission(
+    client: AsyncHapiClient, sid: str, rid: str
+) -> tuple[bool, str]:
     """拒绝权限请求"""
     resp = await client.post(f"/api/sessions/{sid}/permissions/{rid}/deny", json={})
     if resp.ok:
@@ -193,7 +221,9 @@ async def archive_session(client: AsyncHapiClient, sid: str) -> tuple[bool, str]
         return False, f"归档失败: {resp.status} {body[:200]}"
 
 
-async def resume_session(client: AsyncHapiClient, sid: str) -> tuple[bool, str, str | None]:
+async def resume_session(
+    client: AsyncHapiClient, sid: str
+) -> tuple[bool, str, str | None]:
     """恢复 inactive session，返回 (成功, 描述, 恢复后的 session_id 或 None)"""
     resp = await client.post(f"/api/sessions/{sid}/resume", json={})
     if resp.ok:
@@ -233,7 +263,9 @@ def _format_resume_error(status: int, body: str) -> str:
     return f"恢复失败: {status} {detail}"
 
 
-async def rename_session(client: AsyncHapiClient, sid: str, new_name: str) -> tuple[bool, str]:
+async def rename_session(
+    client: AsyncHapiClient, sid: str, new_name: str
+) -> tuple[bool, str]:
     """重命名 session"""
     resp = await client.patch(f"/api/sessions/{sid}", json={"name": new_name})
     if resp.ok:
@@ -278,10 +310,16 @@ async def fetch_recent_paths(client: AsyncHapiClient) -> list[str]:
     return paths
 
 
-async def spawn_session(client: AsyncHapiClient, machine_id: str,
-                        directory: str, agent: str, session_type: str = "simple",
-                        yolo: bool = False, worktree_name: str = "",
-                        model_reasoning_effort: str | None = None) -> tuple[bool, str, str | None]:
+async def spawn_session(
+    client: AsyncHapiClient,
+    machine_id: str,
+    directory: str,
+    agent: str,
+    session_type: str = "simple",
+    yolo: bool = False,
+    worktree_name: str = "",
+    model_reasoning_effort: str | None = None,
+) -> tuple[bool, str, str | None]:
     """创建新 session，返回 (成功, 消息, session_id 或 None)"""
     body = {
         "directory": directory,
@@ -309,8 +347,9 @@ async def spawn_session(client: AsyncHapiClient, machine_id: str,
         return False, f"创建失败: {result.get('message', '未知错误')}", None
 
 
-async def list_files(client: AsyncHapiClient, sid: str,
-                     query: str = "", limit: int = 200) -> list[dict]:
+async def list_files(
+    client: AsyncHapiClient, sid: str, query: str = "", limit: int = 200
+) -> list[dict]:
     """搜索 session 工作目录下的文件（ripgrep）"""
     params: dict = {"limit": limit}
     if query:
@@ -319,16 +358,17 @@ async def list_files(client: AsyncHapiClient, sid: str,
     return data.get("files", [])
 
 
-async def list_directory(client: AsyncHapiClient, sid: str,
-                         path: str = ".") -> list[dict]:
+async def list_directory(
+    client: AsyncHapiClient, sid: str, path: str = "."
+) -> list[dict]:
     """列出远端目录，每个条目含 name/type/size/modified"""
-    data = await client.get_json(f"/api/sessions/{sid}/directory",
-                                 params={"path": path})
+    data = await client.get_json(
+        f"/api/sessions/{sid}/directory", params={"path": path}
+    )
     return data.get("entries", [])
 
 
-async def read_file(client: AsyncHapiClient, sid: str,
-                    path: str) -> tuple[bool, str]:
+async def read_file(client: AsyncHapiClient, sid: str, path: str) -> tuple[bool, str]:
     """读取远端文件，返回 (成功, base64内容或错误信息)"""
     resp = await client.get(f"/api/sessions/{sid}/file", params={"path": path})
     if not resp.ok:
