@@ -5,11 +5,10 @@ HAPI 异步 HTTP 客户端
 - SOCKS5/HTTP 代理支持 (aiohttp-socks)
 """
 
-import asyncio
 import time
+import asyncio
 
 import aiohttp
-
 from astrbot.api import logger
 
 
@@ -27,7 +26,6 @@ def _build_connector(proxy_url: str | None):
     if proxy_url:
         try:
             from aiohttp_socks import ProxyConnector
-
             return ProxyConnector.from_url(proxy_url)
         except ImportError:
             logger.warning("aiohttp-socks 未安装，忽略代理配置")
@@ -37,15 +35,9 @@ def _build_connector(proxy_url: str | None):
 class AsyncTokenManager:
     """异步 JWT 令牌管理：获取、缓存、主动刷新"""
 
-    def __init__(
-        self,
-        endpoint: str,
-        access_token: str,
-        proxy_url: str | None,
-        jwt_lifetime: int = 900,
-        refresh_before: int = 180,
-        cf_access_mgr=None,
-    ):
+    def __init__(self, endpoint: str, access_token: str, proxy_url: str | None,
+                 jwt_lifetime: int = 900, refresh_before: int = 180,
+                 cf_access_mgr=None):
         self._endpoint = endpoint
         self._access_token = access_token
         self._proxy_url = proxy_url
@@ -89,12 +81,8 @@ class AsyncTokenManager:
             async with aiohttp.ClientSession(
                 connector=connector, connector_owner=True
             ) as session:
-                async with session.post(
-                    url,
-                    json=payload,
-                    headers=extra_headers,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
+                async with session.post(url, json=payload, headers=extra_headers,
+                                        timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     resp.raise_for_status()
                     data = await resp.json()
                     self._jwt = data["token"]
@@ -108,15 +96,9 @@ class AsyncTokenManager:
 class AsyncHapiClient:
     """异步 HAPI HTTP 客户端，封装鉴权、重试"""
 
-    def __init__(
-        self,
-        endpoint: str,
-        access_token: str,
-        proxy_url: str | None = None,
-        jwt_lifetime: int = 900,
-        refresh_before: int = 180,
-        cf_access_mgr=None,
-    ):
+    def __init__(self, endpoint: str, access_token: str, proxy_url: str | None = None,
+                 jwt_lifetime: int = 900, refresh_before: int = 180,
+                 cf_access_mgr=None):
         self._endpoint = endpoint.rstrip("/")
         self._proxy_url = proxy_url
         self._cf_mgr = cf_access_mgr
@@ -153,9 +135,8 @@ class AsyncHapiClient:
         token = await self._token_mgr.get_token()
         return {"Authorization": f"Bearer {token}"}
 
-    async def request(
-        self, method: str, path: str, *, retry_on_401: bool = True, **kwargs
-    ) -> aiohttp.ClientResponse:
+    async def request(self, method: str, path: str, *,
+                      retry_on_401: bool = True, **kwargs) -> aiohttp.ClientResponse:
         """
         发送请求到 HAPI，自动附加 JWT。
         遇到 401 时自动刷新令牌并重试一次。
@@ -169,11 +150,8 @@ class AsyncHapiClient:
         headers.update(await self._auth_headers())
 
         resp = await self._session.request(
-            method,
-            url,
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=15),
-            **kwargs,
+            method, url, headers=headers,
+            timeout=aiohttp.ClientTimeout(total=15), **kwargs
         )
 
         if resp.status == 401 and retry_on_401:
@@ -182,11 +160,8 @@ class AsyncHapiClient:
             await self._token_mgr.force_refresh()
             headers.update(await self._auth_headers())
             resp = await self._session.request(
-                method,
-                url,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=15),
-                **kwargs,
+                method, url, headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15), **kwargs
             )
 
         return resp
@@ -233,15 +208,14 @@ class AsyncHapiClient:
             async with self._session.get(
                 f"{self._endpoint}/health",
                 headers=cf_headers,
-                timeout=aiohttp.ClientTimeout(total=5),
+                timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 return resp.ok
         except Exception:
             return False
 
-    async def subscribe_events_raw(
-        self, *, session_id: str = None, machine_id: str = None, all_events: bool = True
-    ):
+    async def subscribe_events_raw(self, *, session_id: str = None,
+                                   machine_id: str = None, all_events: bool = True):
         """
         订阅 GET /api/events（SSE 长连接）。
         返回 aiohttp 流式 response 供外部逐行解析。
@@ -260,9 +234,7 @@ class AsyncHapiClient:
 
         url = f"{self._endpoint}/api/events"
         sse_headers = self._cf_mgr.get_headers() if self._cf_mgr else {}
-        resp = await self._session.get(
-            url, params=params, headers=sse_headers, timeout=None
-        )
+        resp = await self._session.get(url, params=params, headers=sse_headers, timeout=None)
         resp.raise_for_status()
 
         # 校验 Content-Type，防止 Cloudflare 挑战页等非 SSE 响应
@@ -282,3 +254,4 @@ class AsyncHapiClient:
             )
 
         return resp
+
