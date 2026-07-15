@@ -1,10 +1,10 @@
 """待审批权限请求管理"""
 
 import asyncio
-import time
+
 from astrbot.api.event import AstrMessageEvent
-from . import approval_ops
-from . import formatters
+
+from . import approval_ops, formatters
 
 
 class PendingManager:
@@ -13,16 +13,16 @@ class PendingManager:
     def __init__(self, sse_listener):
         self.sse_listener = sse_listener
 
-    def get_pending_for_window(self, event: AstrMessageEvent, visible_sids: set[str]) -> dict[str, dict]:
+    def get_pending_for_window(
+        self, event: AstrMessageEvent, visible_sids: set[str]
+    ) -> dict[str, dict]:
         """返回当前窗口可见范围内的待审批请求。"""
         pending = self.sse_listener.get_all_pending()
-        return {
-            sid: reqs
-            for sid, reqs in pending.items()
-            if sid in visible_sids
-        }
+        return {sid: reqs for sid, reqs in pending.items() if sid in visible_sids}
 
-    def flatten_pending(self, event: AstrMessageEvent | None, visible_sids: set[str] | None) -> list[tuple[str, str, dict]]:
+    def flatten_pending(
+        self, event: AstrMessageEvent | None, visible_sids: set[str] | None
+    ) -> list[tuple[str, str, dict]]:
         """展平待审批请求为列表"""
         if event is None or visible_sids is None:
             pending = self.sse_listener.get_all_pending()
@@ -40,10 +40,15 @@ class PendingManager:
                 self.sse_listener.free_index(index)
         approval_ops.remove_pending_entry(self.sse_listener.pending, sid, rid)
 
-    async def approve_items(self, items: list[tuple[str, str, dict]], client) -> str | None:
+    async def approve_items(
+        self, items: list[tuple[str, str, dict]], client
+    ) -> str | None:
         """批准给定列表中的所有非 question 请求。"""
-        regular = [(sid, rid, req) for sid, rid, req in items
-                   if not formatters.is_question_request(req)]
+        regular = [
+            (sid, rid, req)
+            for sid, rid, req in items
+            if not formatters.is_question_request(req)
+        ]
         if not regular:
             return None
 
@@ -79,11 +84,20 @@ class PendingManager:
             return f"✅ 已批准 {success_count} 项，❌ 失败 {fail_count} 项"
         return f"✅ 已批准 {success_count} 项"
 
-    async def answer_questions_interactive(self, event: AstrMessageEvent, items: list[tuple[str, str, dict]],
-                                          client, session_waiter, SessionController):
+    async def answer_questions_interactive(
+        self,
+        event: AstrMessageEvent,
+        items: list[tuple[str, str, dict]],
+        client,
+        session_waiter,
+        SessionController,
+    ):
         """交互式回答 question 类型的请求"""
-        questions = [(sid, rid, req) for sid, rid, req in items
-                     if formatters.is_question_request(req)]
+        questions = [
+            (sid, rid, req)
+            for sid, rid, req in items
+            if formatters.is_question_request(req)
+        ]
         if not questions:
             return
 
@@ -91,7 +105,9 @@ class PendingManager:
             args = req.get("arguments") or {}
             question_list = args.get("questions", []) if isinstance(args, dict) else []
             if not question_list:
-                await event.send(event.plain_result("❌ 当前问题请求缺少题目内容，无法继续回答"))
+                await event.send(
+                    event.plain_result("❌ 当前问题请求缺少题目内容，无法继续回答")
+                )
                 continue
 
             is_rui = req.get("tool") == "request_user_input"
@@ -104,16 +120,26 @@ class PendingManager:
                 question = question_list[qi]
                 opts = question.get("options", [])
                 prompt = approval_ops.build_question_prompt(
-                    questions, qi_idx, qi, question, self.sse_listener.sessions_cache, is_rui=is_rui
+                    questions,
+                    qi_idx,
+                    qi,
+                    question,
+                    self.sse_listener.sessions_cache,
+                    is_rui=is_rui,
                 )
                 await event.send(event.plain_result(prompt))
 
                 collected = []
 
                 if is_rui:
+
                     @session_waiter(timeout=120, record_history_chains=False)
-                    async def q_waiter(controller: SessionController, ev: AstrMessageEvent,
-                                       _opts=opts, _collected=collected):
+                    async def q_waiter(
+                        controller: SessionController,
+                        ev: AstrMessageEvent,
+                        _opts=opts,
+                        _collected=collected,
+                    ):
                         reply = (ev.message_str or "").strip()
                         if not reply:
                             controller.keep(timeout=120, reset_timeout=True)
@@ -130,11 +156,18 @@ class PendingManager:
                         await event.send(event.plain_result("操作超时，已取消"))
                         return False
 
-                    await event.send(event.plain_result("请描述此问题的补充信息或要求，若无请输入 n:"))
+                    await event.send(
+                        event.plain_result(
+                            "请描述此问题的补充信息或要求，若无请输入 n:"
+                        )
+                    )
 
                     @session_waiter(timeout=60, record_history_chains=False)
-                    async def note_waiter(controller: SessionController, ev: AstrMessageEvent,
-                                         _collected=collected):
+                    async def note_waiter(
+                        controller: SessionController,
+                        ev: AstrMessageEvent,
+                        _collected=collected,
+                    ):
                         reply = (ev.message_str or "").strip()
                         if reply and reply.lower() != "n":
                             _collected.append(f"user_note: {reply}")
@@ -146,9 +179,15 @@ class PendingManager:
                         pass
 
                 else:
+
                     @session_waiter(timeout=120, record_history_chains=False)
-                    async def q_waiter(controller: SessionController, ev: AstrMessageEvent,
-                                       _opts=opts, _collected=collected, _state={"other": False}):
+                    async def q_waiter(
+                        controller: SessionController,
+                        ev: AstrMessageEvent,
+                        _opts=opts,
+                        _collected=collected,
+                        _state={"other": False},
+                    ):
                         reply = (ev.message_str or "").strip()
                         if not reply:
                             controller.keep(timeout=120, reset_timeout=True)
@@ -185,10 +224,12 @@ class PendingManager:
             while True:
                 lines = ["📋 回答汇总:"]
                 for qi, question in enumerate(question_list):
-                    q_text = question.get("question", "") or question.get("id", f"问题{qi+1}")
+                    q_text = question.get("question", "") or question.get(
+                        "id", f"问题{qi + 1}"
+                    )
                     ans = collected_answers[qi]
                     ans_display = "、".join(ans) if ans else "(未回答)"
-                    lines.append(f"[{qi+1}] {q_text[:40]}")
+                    lines.append(f"[{qi + 1}] {q_text[:40]}")
                     lines.append(f"  → {ans_display}")
                 lines.append("\n输入序号修改某题，y 提交，n 取消")
                 await event.send(event.plain_result("\n".join(lines)))
@@ -196,8 +237,9 @@ class PendingManager:
                 reply_box = {"v": ""}
 
                 @session_waiter(timeout=120, record_history_chains=False)
-                async def review_waiter(controller: SessionController, ev: AstrMessageEvent,
-                                        _box=reply_box):
+                async def review_waiter(
+                    controller: SessionController, ev: AstrMessageEvent, _box=reply_box
+                ):
                     _box["v"] = (ev.message_str or "").strip()
                     controller.stop()
 
@@ -235,9 +277,12 @@ class PendingManager:
 
     # ──── LLM 工具审批（伪装成 HAPI 权限请求）────
 
-    def add_llm_tool_request(self, session_id: str, tool_name: str, args: dict) -> tuple[str, asyncio.Future, int]:
+    def add_llm_tool_request(
+        self, session_id: str, tool_name: str, args: dict
+    ) -> tuple[str, asyncio.Future, int]:
         """添加 LLM 工具审批请求到 pending 队列，返回 (request_id, future, index)"""
         import uuid
+
         req_id = f"llm_{uuid.uuid4().hex[:8]}"
         future = asyncio.Future()
 
@@ -262,4 +307,3 @@ class PendingManager:
     def is_llm_tool_request(self, req: dict) -> bool:
         """判断是否为 LLM 工具审批请求"""
         return req.get("type") == "llm_tool"
-
