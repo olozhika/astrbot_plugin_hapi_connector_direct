@@ -1,25 +1,35 @@
 """后台 SSE 事件监听 + 推送通知"""
 
-import copy
-import json
 import asyncio
+import copy
 import datetime
-from collections.abc import Callable, Awaitable
+import json
+from collections.abc import Awaitable, Callable
 
 from astrbot.api import logger
 
-from .hapi_client import AsyncHapiClient, ContentTypeError
-from .formatters import (extract_text_preview, session_label_short, format_request_detail,
-                         format_agent_line, is_question_request, format_question_notification,
-                         format_permission_notification)
 from . import session_ops
+from .formatters import (
+    extract_text_preview,
+    format_agent_line,
+    format_permission_notification,
+    format_question_notification,
+    format_request_detail,
+    is_question_request,
+    session_label_short,
+)
+from .hapi_client import AsyncHapiClient, ContentTypeError
 
 
 class SSEListener:
     """后台 SSE 监听，实时捕获权限请求、等待输入、任务完成等事件"""
 
-    def __init__(self, client: AsyncHapiClient, sessions_cache: list[dict],
-                 notify_callback: Callable[[str, str], Awaitable[None]]):
+    def __init__(
+        self,
+        client: AsyncHapiClient,
+        sessions_cache: list[dict],
+        notify_callback: Callable[[str, str], Awaitable[None]],
+    ):
         self.client = client
         self.sessions_cache = sessions_cache
         self.notify_callback = notify_callback
@@ -61,9 +71,17 @@ class SSEListener:
         self._request_notify_sids: set[str] = set()
         self._request_notify_task: asyncio.Task | None = None
 
-    def start(self, output_level: str = "summary", remind_pending: bool = False, remind_interval: int = 180,
-              auto_approve_enabled: bool = False, auto_approve_start: str = "23:00", auto_approve_end: str = "07:00",
-              summary_msg_count: int = 5, max_reconnect_attempts: int = 0):
+    def start(
+        self,
+        output_level: str = "summary",
+        remind_pending: bool = False,
+        remind_interval: int = 180,
+        auto_approve_enabled: bool = False,
+        auto_approve_start: str = "23:00",
+        auto_approve_end: str = "07:00",
+        summary_msg_count: int = 5,
+        max_reconnect_attempts: int = 0,
+    ):
         """启动 SSE 监听任务"""
         self.output_level = output_level
         self._summary_msg_count = summary_msg_count
@@ -89,11 +107,14 @@ class SSEListener:
 
     async def stop(self):
         """停止 SSE 监听"""
-        for task in (self._task, self._remind_task,
-                     getattr(self, '_debounce_task', None),
-                     getattr(self, '_completion_task', None),
-                     getattr(self, '_compact_check_task', None),
-                     getattr(self, '_request_notify_task', None)):
+        for task in (
+            self._task,
+            self._remind_task,
+            getattr(self, "_debounce_task", None),
+            getattr(self, "_completion_task", None),
+            getattr(self, "_compact_check_task", None),
+            getattr(self, "_request_notify_task", None),
+        ):
             if task and not task.done():
                 task.cancel()
                 try:
@@ -150,7 +171,10 @@ class SSEListener:
                         was_hibernated = self._hibernated
                         self._hibernated = False
                         if self.conn_fail_count > 0:
-                            logger.info("SSE 连接已恢复（此前连续失败 %d 次）", self.conn_fail_count)
+                            logger.info(
+                                "SSE 连接已恢复（此前连续失败 %d 次）",
+                                self.conn_fail_count,
+                            )
                             if was_hibernated:
                                 await self._push_notification("✅ SSE 连接已恢复", "")
                         backoff = 1
@@ -158,7 +182,9 @@ class SSEListener:
                     buf += chunk
                     while b"\n" in buf:
                         line_bytes, buf = buf.split(b"\n", 1)
-                        line = line_bytes.decode("utf-8", errors="replace").rstrip("\r\n")
+                        line = line_bytes.decode("utf-8", errors="replace").rstrip(
+                            "\r\n"
+                        )
                         if not line or not line.startswith("data: "):
                             continue
                         try:
@@ -173,7 +199,11 @@ class SSEListener:
             except ContentTypeError as e:
                 self.conn_fail_count += 1
                 backoff = min(max(backoff, 15) * 2, max_backoff)
-                hint = "（疑似 Cloudflare 验证页）" if "text/html" in e.content_type else ""
+                hint = (
+                    "（疑似 Cloudflare 验证页）"
+                    if "text/html" in e.content_type
+                    else ""
+                )
                 self.conn_error = f"{e} {hint}".strip()
                 logger.warning("SSE 连接异常: %s %s, %ds 后重连", e, hint, backoff)
             except Exception as e:
@@ -188,10 +218,15 @@ class SSEListener:
             # 检查是否达到重连上限
             if self._max_reconnect > 0 and self.conn_fail_count >= self._max_reconnect:
                 self._hibernated = True
-                logger.warning("SSE 已连续失败 %d 次，达到重连上限，进入休眠。发送 /hapi list 可重新唤醒", self.conn_fail_count)
+                logger.warning(
+                    "SSE 已连续失败 %d 次，达到重连上限，进入休眠。发送 /hapi list 可重新唤醒",
+                    self.conn_fail_count,
+                )
                 await self._push_notification(
                     f"⚠ SSE 已连续失败 {self.conn_fail_count} 次，达到重连上限，已进入休眠\n"
-                    "发送 /hapi list 可重新唤醒并尝试重连", "")
+                    "发送 /hapi list 可重新唤醒并尝试重连",
+                    "",
+                )
                 return
 
             if self.conn_fail_count == 20:
@@ -217,8 +252,16 @@ class SSEListener:
         async with self._lock:
             old_state = self.session_states.get(sid, {})
 
-            is_active = data.get("active") if "active" in data else old_state.get("active", False)
-            is_thinking = data.get("thinking") if "thinking" in data else old_state.get("thinking", False)
+            is_active = (
+                data.get("active")
+                if "active" in data
+                else old_state.get("active", False)
+            )
+            is_thinking = (
+                data.get("thinking")
+                if "thinking" in data
+                else old_state.get("thinking", False)
+            )
             old_thinking = old_state.get("thinking", False)
             old_seq = old_state.get("lastSeq", -1)
 
@@ -271,19 +314,29 @@ class SSEListener:
 
                 index = req.get("index", 0)
 
-                if self._auto_approve_enabled and self._in_auto_approve_window() and not is_question_request(req):
+                if (
+                    self._auto_approve_enabled
+                    and self._in_auto_approve_window()
+                    and not is_question_request(req)
+                ):
                     # 忙时托管审批：自动批准非 question 请求
                     ok, _ = await session_ops.approve_permission(self.client, sid, rid)
                     tool = req.get("tool", "?")
                     result_mark = "✓" if ok else "✗"
-                    notify_msg = f"[忙时托管审批] 已自动批准\n{label}\n  {result_mark} {tool}"
+                    notify_msg = (
+                        f"[忙时托管审批] 已自动批准\n{label}\n  {result_mark} {tool}"
+                    )
                     queued_notifications.append(notify_msg)
                 else:
                     if is_question_request(req):
-                        msg = format_question_notification(req, label, total, session_total, index)
+                        msg = format_question_notification(
+                            req, label, total, session_total, index
+                        )
                     else:
                         detail = format_request_detail(req)
-                        msg = format_permission_notification(label, detail, total, session_total, index)
+                        msg = format_permission_notification(
+                            label, detail, total, session_total, index
+                        )
                     queued_notifications.append(msg)
 
             self._queue_request_notifications(sid, queued_notifications)
@@ -302,13 +355,18 @@ class SSEListener:
         # === 输出级别处理 ===
 
         # detail/simple 模式：防抖，合并短时间内的事件一次性拉取
-        requests_flush_messages_first = bool(new_requests) and self.output_level in ("detail", "simple")
+        requests_flush_messages_first = bool(new_requests) and self.output_level in (
+            "detail",
+            "simple",
+        )
         if self.output_level in ("detail", "simple") and old_seq >= 0:
             if is_active or is_thinking:
                 if not requests_flush_messages_first:
                     self._debounce_sids.add(sid)
                     if self._debounce_task is None or self._debounce_task.done():
-                        self._debounce_task = asyncio.create_task(self._debounced_fetch())
+                        self._debounce_task = asyncio.create_task(
+                            self._debounced_fetch()
+                        )
 
         # 完成边沿只看 thinking -> idle；部分 Codex SSE 不会携带 active。
         if old_thinking and not is_thinking:
@@ -317,13 +375,21 @@ class SSEListener:
             if pending_count == 0:
                 self._completion_sids.add(sid)
                 if self._completion_task is None or self._completion_task.done():
-                    self._completion_task = asyncio.create_task(self._debounced_completion())
+                    self._completion_task = asyncio.create_task(
+                        self._debounced_completion()
+                    )
 
         # silence 模式：单独检测 Prompt is too long（detail/simple 模式在 _show_* 里检测）
-        if self.output_level == "silence" and old_seq >= 0 and (is_active or is_thinking):
+        if (
+            self.output_level == "silence"
+            and old_seq >= 0
+            and (is_active or is_thinking)
+        ):
             self._compact_check_sids.add(sid)
             if self._compact_check_task is None or self._compact_check_task.done():
-                self._compact_check_task = asyncio.create_task(self._debounced_compact_check())
+                self._compact_check_task = asyncio.create_task(
+                    self._debounced_compact_check()
+                )
 
     async def _get_latest_seq(self, sid: str) -> int:
         """获取 session 当前的最新消息序号"""
@@ -355,13 +421,17 @@ class SSEListener:
                 break
         else:
             metadata = updated_data.get("metadata")
-            cache.append({
-                "id": sid,
-                "active": updated_data.get("active", False),
-                "thinking": updated_data.get("thinking", False),
-                "pendingRequestsCount": updated_data.get("pendingRequestsCount", 0),
-                "metadata": copy.deepcopy(metadata) if isinstance(metadata, dict) else {},
-            })
+            cache.append(
+                {
+                    "id": sid,
+                    "active": updated_data.get("active", False),
+                    "thinking": updated_data.get("thinking", False),
+                    "pendingRequestsCount": updated_data.get("pendingRequestsCount", 0),
+                    "metadata": copy.deepcopy(metadata)
+                    if isinstance(metadata, dict)
+                    else {},
+                }
+            )
 
     def _already_notified_messages(self, sid: str, latest_visible_seq: int) -> bool:
         return latest_visible_seq <= self._message_notified_seqs.get(sid, -1)
@@ -375,7 +445,9 @@ class SSEListener:
         self._queued_request_notifications.setdefault(sid, []).extend(texts)
         self._request_notify_sids.add(sid)
         if self._request_notify_task is None or self._request_notify_task.done():
-            self._request_notify_task = asyncio.create_task(self._debounced_request_notifications())
+            self._request_notify_task = asyncio.create_task(
+                self._debounced_request_notifications()
+            )
 
     async def _flush_request_notifications(self, sid: str):
         queued = self._queued_request_notifications.pop(sid, [])
@@ -424,16 +496,22 @@ class SSEListener:
                         await self._show_simple(sid, last_seq)
 
                     async with self._lock:
-                        last_seq = self.session_states.get(sid, {}).get("lastSeq", last_seq)
+                        last_seq = self.session_states.get(sid, {}).get(
+                            "lastSeq", last_seq
+                        )
                     if last_seq <= self._completion_notified_seqs.get(sid, -1):
                         continue
                     label = session_label_short(sid, self.sessions_cache)
                     self._completion_notified_seqs[sid] = last_seq
-                    await self._push_notification(f"✅ 会话已完成，等待新的输入\n{label}", sid)
+                    await self._push_notification(
+                        f"✅ 会话已完成，等待新的输入\n{label}", sid
+                    )
             if not self._completion_sids:
                 break
 
-    async def _check_and_handle_compact(self, sid: str, messages: list[dict], old_seq: int):
+    async def _check_and_handle_compact(
+        self, sid: str, messages: list[dict], old_seq: int
+    ):
         """检测新消息中是否含 Prompt is too long 或 Compaction completed，触发对应流程"""
         last_notified = self._compact_notified_seqs.get(sid, -1)
         last_completed = self._compaction_completed_seqs.get(sid, -1)
@@ -450,7 +528,11 @@ class SSEListener:
             text_lower = text.lower()
 
             # 检测 Prompt is too long → 触发压缩流程（每次只处理一条）
-            if not triggered_compact and seq > last_notified and "prompt is too long" in text_lower:
+            if (
+                not triggered_compact
+                and seq > last_notified
+                and "prompt is too long" in text_lower
+            ):
                 triggered_compact = True
                 self._compact_notified_seqs[sid] = seq
                 label = session_label_short(sid, self.sessions_cache)
@@ -458,14 +540,16 @@ class SSEListener:
                     ok, _ = await session_ops.send_message(self.client, sid, "/compact")
                     mark = "✓" if ok else "✗"
                     await self._push_notification(
-                        f"[忙时托管审批] 已自动压缩上下文\n{label}\n  {mark} /compact", sid)
+                        f"[忙时托管审批] 已自动压缩上下文\n{label}\n  {mark} /compact",
+                        sid,
+                    )
                 else:
                     async with self._lock:
                         # 为压缩请求分配序号
                         compact_req = {
                             "tool": "__compact__",
                             "arguments": {},
-                            "index": self.allocate_index()
+                            "index": self.allocate_index(),
                         }
                         self.pending.setdefault(sid, {})["__compact__"] = compact_req
                         total = sum(len(r) for r in self.pending.values())
@@ -492,7 +576,8 @@ class SSEListener:
                 ok, _ = await session_ops.send_message(self.client, sid, "继续")
                 mark = "✓" if ok else "✗"
                 await self._push_notification(
-                    f"[上下文压缩完成] 已自动发送「继续」\n{label}\n  {mark}", sid)
+                    f"[上下文压缩完成] 已自动发送「继续」\n{label}\n  {mark}", sid
+                )
 
     async def _debounced_compact_check(self):
         """silence 模式下防抖检测 Prompt is too long"""
@@ -542,7 +627,8 @@ class SSEListener:
 
             # 找出新消息（seq > old_seq），过滤掉用户消息
             new_msgs = [
-                m for m in messages
+                m
+                for m in messages
                 if m.get("seq", 0) > old_seq
                 and m.get("content", {}).get("role") != "user"
             ]
@@ -675,7 +761,7 @@ class SSEListener:
             if not agent_texts:
                 return False
 
-            agent_texts = agent_texts[-self._summary_msg_count:]
+            agent_texts = agent_texts[-self._summary_msg_count :]
             latest_visible_seq = max(msg.get("seq", 0) for msg, _ in agent_texts)
             if self._already_notified_messages(sid, latest_visible_seq):
                 return False
@@ -778,7 +864,10 @@ class SSEListener:
                             if "index" not in req:
                                 req["index"] = self.allocate_index()
                         self.pending[sid] = requests_data
-                    logger.info("加载 session %s 的 %d 个待审批请求",
-                                sid[:8], len(requests_data))
+                    logger.info(
+                        "加载 session %s 的 %d 个待审批请求",
+                        sid[:8],
+                        len(requests_data),
+                    )
             except Exception as e:
                 logger.warning("加载 session %s 待审批失败: %s", sid[:8], e)
