@@ -81,7 +81,9 @@ def _extract_from_block(block: dict, max_len: int) -> str | None:
     # ── 事件 → [System] ──
     if btype == "event":
         event_data = block.get("data", {})
-        event_type = event_data.get("type", "?") if isinstance(event_data, dict) else "?"
+        event_type = (
+            event_data.get("type", "?") if isinstance(event_data, dict) else "?"
+        )
         if event_type == "ready":
             return None
         # message 类型事件：提取实际消息内容（如 "Context was reset"）
@@ -193,7 +195,6 @@ def _fmt_tool_call(block: dict, max_len: int) -> str:
     return f"🛠️ {name}"
 
 
-
 def _extract_codex_block(data: dict, max_len: int) -> str | None:
     """处理 Codex 专有的包装格式"""
     if not isinstance(data, dict):
@@ -236,7 +237,9 @@ def session_label_short(sid: str, sessions_cache: list[dict]) -> str:
     if len(path) > 40:
         path = "..." + path[-37:]
 
-    in_plan = session.get("permissionMode") == "plan" or (flavor == "codex" and session.get("collaborationMode") == "plan")
+    in_plan = session.get("permissionMode") == "plan" or (
+        flavor == "codex" and session.get("collaborationMode") == "plan"
+    )
     plan_tag = " | 📋Plan Mode" if in_plan else ""
     return f"💬 {title}{plan_tag}\n📂 {path}\n🤖 {flavor} | 🏷️ {sid[:8]}"
 
@@ -252,7 +255,11 @@ def group_sessions_by_path(sessions: list[dict]) -> dict[str, list[dict]]:
     return groups
 
 
-def format_bind_status(sessions: list[dict], session_owners: dict[str, str], window_states: dict[str, dict] = None) -> str:
+def format_bind_status(
+    sessions: list[dict],
+    session_owners: dict[str, str],
+    window_states: dict[str, dict] = None,
+) -> str:
     """格式化全局绑定状态（复用 session 列表格式 + 绑定信息 + 窗口状态）"""
     if not sessions:
         return "没有任何 session"
@@ -265,7 +272,11 @@ def format_bind_status(sessions: list[dict], session_owners: dict[str, str], win
         path = meta.get("path", "(无路径)")
 
         if path != current_path:
-            count = sum(1 for x in sessions if x.get("metadata", {}).get("path", "(无路径)") == path)
+            count = sum(
+                1
+                for x in sessions
+                if x.get("metadata", {}).get("path", "(无路径)") == path
+            )
             lines.append(f"\n📁 {path} ({count})")
             current_path = path
 
@@ -295,9 +306,16 @@ def format_bind_status(sessions: list[dict], session_owners: dict[str, str], win
 
         # 添加窗口状态（显示当前活跃交互的窗口）
         if window_states:
-            active_umo = next((umo for umo, state in window_states.items() if state.get("current_session") == sid), None)
+            active_umo = next(
+                (
+                    umo
+                    for umo, state in window_states.items()
+                    if state.get("current_session") == sid
+                ),
+                None,
+            )
             if active_umo:
-                parts.append(f"🪟正在交互")
+                parts.append("🪟正在交互")
 
         lines.append(" | ".join(parts))
 
@@ -338,7 +356,11 @@ def format_session_list(
         # 当 path 变化时显示分组标题
         if path != current_path:
             # 统计该 path 下的 session 数量
-            count = sum(1 for x in sessions if x.get("metadata", {}).get("path", "(无路径)") == path)
+            count = sum(
+                1
+                for x in sessions
+                if x.get("metadata", {}).get("path", "(无路径)") == path
+            )
             lines.append(f"\n📁 {path} ({count})")
             current_path = path
 
@@ -369,7 +391,7 @@ def format_session_list(
             parts.append("<<当前")
         lines.append(" | ".join(parts))
 
-    lines.append(f"\n💡 切换会话：/hapi sw <序号或ID前缀>")
+    lines.append("\n💡 切换会话：/hapi sw <序号或ID前缀>")
     return "\n".join(lines)
 
 
@@ -388,17 +410,13 @@ def get_session_title(session: dict) -> str:
         summary = str(summary)
 
     candidates = (
-        session.get("thread_name"),      # 新版 Codex
+        session.get("thread_name"),  # 新版 Codex
         meta.get("thread_name"),
-
-        meta.get("name"),                # HAPI rename
+        meta.get("name"),  # HAPI rename
         session.get("name"),
-
         session.get("title"),
-
-        summary,                         # 旧版 Codex
-
-        meta.get("path"),                # 最后兜底
+        summary,  # 旧版 Codex
+        meta.get("path"),  # 最后兜底
     )
 
     for value in candidates:
@@ -488,7 +506,9 @@ def _inner_has_text(inner) -> bool:
         return bool(inner.strip())
     if isinstance(inner, list):
         return any(
-            isinstance(b, dict) and b.get("type") == "text" and b.get("text", "").strip()
+            isinstance(b, dict)
+            and b.get("type") == "text"
+            and b.get("text", "").strip()
             for b in inner
         )
     if isinstance(inner, dict):
@@ -527,8 +547,9 @@ def format_agent_line(text: str) -> str:
     return f"[Message]: {text}"
 
 
-def format_round(round_msgs: list[dict], round_idx: int, total_rounds: int,
-                 max_preview: int = 0) -> str:
+def format_round(
+    round_msgs: list[dict], round_idx: int, total_rounds: int, max_preview: int = 0
+) -> str:
     """格式化单轮消息，带轮次标题"""
     lines = [f"── 第 {round_idx}/{total_rounds} 轮 ──"]
     for m in round_msgs:
@@ -563,7 +584,9 @@ def is_compact_request(req: dict) -> bool:
     return req.get("tool", "") == _COMPACT_TOOL
 
 
-def format_question_notification(req: dict, label: str, total: int, session_total: int, index: int) -> str:
+def format_question_notification(
+    req: dict, label: str, total: int, session_total: int, index: int
+) -> str:
     """格式化问题请求 SSE 通知（支持 AskUserQuestion 和 request_user_input）"""
     args = req.get("arguments") or {}
     questions = args.get("questions", []) if isinstance(args, dict) else []
@@ -578,11 +601,17 @@ def format_question_notification(req: dict, label: str, total: int, session_tota
         for i, opt in enumerate(q.get("options", []), 1):
             desc = f" — {opt['description']}" if opt.get("description") else ""
             lines.append(f"    [{i}] {opt['label']}{desc}")
-    lines += ["", f"当前总共 {total} 个待审批，当前会话共 {session_total} 个待审批，此请求审批序号 {index}", "💡 使用此命令交互式审批：/hapi answer"]
+    lines += [
+        "",
+        f"当前总共 {total} 个待审批，当前会话共 {session_total} 个待审批，此请求审批序号 {index}",
+        "💡 使用此命令交互式审批：/hapi answer",
+    ]
     return "\n".join(lines)
 
 
-def format_permission_notification(label: str, detail: str, total: int, session_total: int, index: int) -> str:
+def format_permission_notification(
+    label: str, detail: str, total: int, session_total: int, index: int
+) -> str:
     """格式化普通权限审批通知，复用统一的会话前缀。"""
     lines = [
         f"🔐 权限请求 {label}",
@@ -617,7 +646,9 @@ def format_request_detail(req: dict) -> str:
     return f"{tool}: {args_str}"
 
 
-def format_pending_requests(pending: dict[str, dict], sessions_cache: list[dict]) -> str:
+def format_pending_requests(
+    pending: dict[str, dict], sessions_cache: list[dict]
+) -> str:
     """格式化所有待审批请求"""
     items = []
     for sid, reqs in pending.items():
@@ -662,8 +693,9 @@ def format_model_modes(modes: list[str], current: str) -> str:
     return "\n".join(lines)
 
 
-def format_directory(entries: list[dict], path: str = ".",
-                     detail: bool = False, sid: str = "") -> str:
+def format_directory(
+    entries: list[dict], path: str = ".", detail: bool = False, sid: str = ""
+) -> str:
     """格式化目录浏览（/hapi files 返回结果），目录在前文件在后"""
     if not entries:
         header = f"📌 Session: {sid}\n" if sid else ""
@@ -711,8 +743,16 @@ def format_file_search(files: list[dict], query: str) -> str:
     cap = 50
     lines = [f"🔍 搜索「{query}」({total} 个结果):"]
     for i, f in enumerate(files[:cap], 1):
-        name = f if isinstance(f, str) else (
-            f.get("fullPath") or f.get("path") or f.get("fileName") or f.get("name") or "?"
+        name = (
+            f
+            if isinstance(f, str)
+            else (
+                f.get("fullPath")
+                or f.get("path")
+                or f.get("fileName")
+                or f.get("name")
+                or "?"
+            )
         )
         lines.append(f"  [{i}] {name}")
     if total > cap:
@@ -768,23 +808,30 @@ HELP_TOPIC_ALIASES = {
 
 
 KNOWN_HAPI_SUBCOMMANDS = {
-    "help", "帮助",
-    "list", "ls",
+    "help",
+    "帮助",
+    "list",
+    "ls",
     "sw",
-    "s", "status",
-    "msg", "messages",
+    "s",
+    "status",
+    "msg",
+    "messages",
     "to",
     "perm",
     "model",
     "remote",
-    "output", "out",
+    "output",
+    "out",
     "pending",
-    "approve", "a",
+    "approve",
+    "a",
     "allow",
     "answer",
     "deny",
     "create",
-    "abort", "stop",
+    "abort",
+    "stop",
     "archive",
     "resume",
     "rename",
@@ -792,9 +839,11 @@ KNOWN_HAPI_SUBCOMMANDS = {
     "clean",
     "bind",
     "routes",
-    "files", "file",
+    "files",
+    "file",
     "find",
-    "download", "dl",
+    "download",
+    "dl",
     "upload",
 }
 
@@ -1105,7 +1154,9 @@ def format_unknown_command_help(command: str) -> str:
         "",
         "💡 查看常用命令：/hapi help",
     ]
-    matches = get_close_matches(normalized, sorted(KNOWN_HAPI_SUBCOMMANDS), n=3, cutoff=0.45)
+    matches = get_close_matches(
+        normalized, sorted(KNOWN_HAPI_SUBCOMMANDS), n=3, cutoff=0.45
+    )
     if matches:
         lines.extend(["", "你可能想用："])
         for item in matches:
@@ -1156,19 +1207,21 @@ def _format_help_commands(title: str, topic: str) -> str:
         return "\n".join(lines).rstrip()
 
     if topic == "push":
-        lines.extend([
-            "通知发送规则：",
-            "  1. 某个 session 如果已经绑定到聊天窗口，通知只发到那个窗口。",
-            "  2. 没有绑定时，如果配置了模型默认窗口，例如 /hapi bind codex，就发到那个窗口。",
-            "  3. 还没有时，发到 /hapi bind 设置的默认窗口。",
-            "",
-            "相关命令：",
-            "  /hapi bind               设置默认通知窗口",
-            "  /hapi bind codex         设置 Codex 默认通知窗口",
-            "  /hapi bind status        查看当前通知配置",
-            "  /hapi bind reset         清除 session 绑定和窗口状态，不清除默认窗口配置",
-            "",
-        ])
+        lines.extend(
+            [
+                "通知发送规则：",
+                "  1. 某个 session 如果已经绑定到聊天窗口，通知只发到那个窗口。",
+                "  2. 没有绑定时，如果配置了模型默认窗口，例如 /hapi bind codex，就发到那个窗口。",
+                "  3. 还没有时，发到 /hapi bind 设置的默认窗口。",
+                "",
+                "相关命令：",
+                "  /hapi bind               设置默认通知窗口",
+                "  /hapi bind codex         设置 Codex 默认通知窗口",
+                "  /hapi bind status        查看当前通知配置",
+                "  /hapi bind reset         清除 session 绑定和窗口状态，不清除默认窗口配置",
+                "",
+            ]
+        )
 
     commands = _iter_help_commands(topic)
     for item in commands:
@@ -1205,11 +1258,7 @@ def get_help_text(topic: str = "") -> str:
     normalized = _normalize_help_topic(topic)
     if normalized is None:
         topics = ", ".join(name for name, _ in HELP_TOPICS)
-        return (
-            f"未知帮助主题: {topic}\n"
-            f"可用主题: {topics}\n"
-            "💡 查看常用命令：/hapi help"
-        )
+        return f"未知帮助主题: {topic}\n可用主题: {topics}\n💡 查看常用命令：/hapi help"
 
     if normalized == "home":
         return _get_home_help_text()
